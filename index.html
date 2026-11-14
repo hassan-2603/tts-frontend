@@ -724,11 +724,29 @@ function linkPill(a){
 async function linkZebu(id){
   const a=account(id); if(!a.zebu_uid){ toast('Enter the Zebu client ID first (Edit)'); editAccount(id); return; }
   try{ const r=await API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST'});
-    modal(`<h2>Link ${esc(a.name)} to Zebu</h2><p>Open the Zebu login, sign in as <b class="mono">${esc(a.zebu_uid)}</b>. You'll come back to a "linked" page and trades start syncing.</p>
+    modal(`<h2>Link ${esc(a.name)} to Zebu</h2>
+      <p style="margin-bottom:8px"><b>Option 1: Official Zebu OAuth Login</b></p>
+      <p style="font-size:13px;color:#cbd5e1">Click below to open the Zebu login page and sign in with Zebu ID <b class="mono">${esc(a.zebu_uid)}</b>:</p>
       <p><a class="btn pri" style="text-decoration:none;display:inline-block" href="${esc(r.url)}" target="_blank" rel="noopener">Open Zebu login →</a></p>
-      <p class="muted" style="font-size:12px">The link works for 15 minutes. Zebu sessions expire — when one does, the account shows "Login expired" and an alert is sent; link it again the same way.</p>
-      <div class="row" style="justify-content:flex-end"><button class="btn" onclick="closeModal();refreshLive()">Done</button></div>`);
+      <hr style="border:none;border-top:1px solid #334155;margin:16px 0">
+      <p style="margin-bottom:8px"><b>Option 2: Direct Access Token (If OAuth shows "Access Restricted")</b></p>
+      <p style="font-size:12px;color:#94a3b8">If your Zebu account says "Access Restricted" or you generated a token manually from Zebu portal / Python:</p>
+      <div class="row" style="margin-top:6px">
+        <input id="manTok" type="text" placeholder="Paste Zebu access token here" style="flex:1;font-size:12px">
+        <button class="btn" onclick="saveManualToken('${a.id}')">Save Token</button>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" onclick="closeModal();refreshLive()">Close</button></div>`);
   }catch(e){ toast('Link failed: '+e.message); }
+}
+async function saveManualToken(aid){
+  const t = ($('#manTok')?.value||'').trim();
+  if(!t){ toast('Please enter a token'); return; }
+  try {
+    await API.req('/accounts/'+encodeURIComponent(aid)+'/token', {method:'POST', body:JSON.stringify({token: t})});
+    toast('Token saved successfully! Account linked.');
+    closeModal();
+    refreshLive();
+  } catch(e){ toast('Failed to save token: '+e.message); }
 }
 async function refreshLive(){ if(!LIVE) return; try{ await API.syncAll(); render(); }catch(e){ toast(e.message); } }
 
