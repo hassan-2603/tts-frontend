@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trader Tracking System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0b1020; --panel:#121a2e; --panel2:#18223a; --line:#24304d; --text:#e6ebf5; --muted:#8a96b2;
+  --accent:#4f8cff; --green:#22c38e; --red:#ff5d6c; --amber:#f5b544; --violet:#a78bfa;
+  --radius:12px; --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+a{color:var(--accent)}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
+aside{background:#0e1529;border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;gap:10px;align-items:center;padding:4px 8px 18px}
+.logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#4f8cff,#22c38e);display:grid;place-items:center;font-weight:700;color:#06101f}
+.brand b{display:block;font-size:14px}.brand small{color:var(--muted);font-size:11px}
+.nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:500;margin-bottom:2px}
+.nav a:hover{background:var(--panel);color:var(--text)}
+.nav a.on{background:var(--panel2);color:var(--text);box-shadow:inset 3px 0 0 var(--accent)}
+.nav .sec{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#5b678a;margin:16px 10px 6px}
+.nav .ct{margin-left:auto;background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:0 7px}
+.side-foot{margin-top:18px;padding:10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+main{padding:22px 28px 60px;min-width:0}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.top h1{font-size:21px;margin:0}
+.top .sub{color:var(--muted);font-size:13px}
+.top .sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.p-test{background:#1d2c55;color:#8fb3ff}.p-live{background:#0f3a2d;color:#4fe0ad}.p-watch{background:#3d3015;color:#ffc861}.p-stop{background:#3d1820;color:#ff8792}
+.p-high{background:#3d1820;color:#ff8792}.p-med{background:#3d3015;color:#ffc861}.p-low{background:#232c45;color:#aab6d3}
+.p-pass{background:#0f3a2d;color:#4fe0ad}.p-fail{background:#3d1820;color:#ff8792}
+.grid{display:grid;gap:14px}
+.k6{grid-template-columns:repeat(6,1fr)}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.k2{grid-template-columns:1fr 1fr}
+.c21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.card h3{margin:0 0 12px;font-size:14px;display:flex;align-items:center;gap:8px}
+.card h3 small{color:var(--muted);font-weight:400}
+.kpi .l{color:var(--muted);font-size:12px}
+.kpi .v{font-size:22px;font-weight:700;font-family:var(--mono);margin-top:4px}
+.kpi .h{color:var(--muted);font-size:11.5px;margin-top:2px}
+.pos{color:var(--green)}.neg{color:var(--red)}.amb{color:var(--amber)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;white-space:nowrap;border-bottom:1px solid #1c2640;vertical-align:middle}
+tr.click{cursor:pointer}tr.click:hover td{background:#16203a}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+.tbl-wrap{overflow:auto;max-height:560px}
+.btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font:inherit;font-weight:500;cursor:pointer}
+.btn:hover{border-color:#3a4a73}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:#ff8792}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+input,select,textarea{background:#0d1428;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 9px;font:inherit}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--accent)}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
+label.f input,label.f select{color:var(--text);font-size:14px;min-width:0;width:100%}
+.form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}.mono{font-family:var(--mono)}
+.flow{display:flex;gap:10px;align-items:stretch}
+.flow .st{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.flow .st b{display:block;font-size:13px}.flow .st span{font-size:12px;color:var(--muted)}
+.flow .st .no{font-family:var(--mono);color:var(--accent);font-weight:700}
+.flagtxt{font-size:12.5px;white-space:normal;min-width:220px}
+.chip{display:inline-block;background:#1b2542;border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:11.5px;margin:2px 3px 2px 0}
+.chip.bad{border-color:#6b2532;color:#ff8792}
+.modal-bg{position:fixed;inset:0;background:rgba(3,6,15,.7);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal-bg.on{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:min(820px,100%);max-height:90vh;overflow:auto;padding:20px}
+.modal h2{margin:0 0 14px;font-size:17px}
+.toast{position:fixed;bottom:20px;right:20px;background:#13213f;border:1px solid var(--accent);padding:10px 14px;border-radius:10px;z-index:60;display:none}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal div{aspect-ratio:1.6;border-radius:5px;font-size:10.5px;display:flex;flex-direction:column;justify-content:center;align-items:center;font-family:var(--mono)}
+.cal .hd{aspect-ratio:auto;color:var(--muted);font-family:Inter}
+.bar{height:8px;background:#1b2542;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%}
+.tabs{display:flex;gap:4px;background:#0d1428;border:1px solid var(--line);border-radius:9px;padding:3px}
+.tabs button{background:none;border:0;color:var(--muted);padding:5px 11px;border-radius:6px;font:inherit;font-size:12.5px;cursor:pointer}
+.tabs button.on{background:var(--panel2);color:var(--text)}
+.note{background:#101a33;border:1px dashed #33467a;border-radius:10px;padding:12px;color:#b5c2e0;font-size:12.5px}
+pre.code{background:#0a1022;border:1px solid var(--line);border-radius:8px;padding:12px;font:12px/1.5 var(--mono);overflow:auto;color:#c5d2f0;max-height:340px}
+.checklist td:last-child{text-align:right}
+.login{min-height:100vh;display:grid;place-items:center}
+.login .card{width:360px}
+@media (max-width:1100px){.k6{grid-template-columns:repeat(3,1fr)}.c21,.k2{grid-template-columns:1fr}.form{grid-template-columns:1fr 1fr}}
+@media (max-width:760px){.app{grid-template-columns:1fr}aside{position:static;height:auto}.k4,.k3,.k6{grid-template-columns:1fr 1fr}.form{grid-template-columns:1fr}main{padding:16px}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="modal-bg" id="mbg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   TRADER TRACKING SYSTEM — tracking only, never places orders.
+   Data layer: everything goes through `Store` + `API`. For live
+   deployment set Settings → Data source = Live API and implement the
+   endpoints listed in Settings → API (read-only broker trade books).
+   ===================================================================== */
+
+// ---------- utilities ----------
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const inr = (n, d=0) => (n<0?'−':'') + '₹' + Math.abs(n).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});
+const inrS = n => { const a=Math.abs(n), s=n<0?'−':(n>0?'+':''); return a>=1e7? s+'₹'+(a/1e7).toFixed(2)+' Cr' : a>=1e5? s+'₹'+(a/1e5).toFixed(2)+' L' : s+'₹'+Math.round(a).toLocaleString('en-IN'); };
+const pct = (n,d=0) => isFinite(n)? n.toFixed(d)+'%' : '—';
+const cls = n => n>0?'pos':(n<0?'neg':'');
+const toMin = t => { const [h,m]=String(t).split(':').map(Number); return h*60+m; };
+const fromMin = m => String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+const uid = p => p + Math.random().toString(36).slice(2,8).toUpperCase();
+const TODAY = new Date(Date.now()+5.5*3600e3).toISOString().slice(0,10);
+function dstr(d){ return d.toISOString().slice(0,10); }
+function addDays(s,n){ const d=new Date(s+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return dstr(d); }
+function isWeekday(s){ const g=new Date(s+'T00:00:00Z').getUTCDay(); return g>0&&g<6; }
+function tradingDaysBetween(a,b){ let c=0; for(let s=a; s<=b; s=addDays(s,1)) if(isWeekday(s)) c++; return c; }
+function nthTradingDay(start,n){ let s=start,c=isWeekday(s)?1:0; while(c<n){ s=addDays(s,1); if(isWeekday(s)) c++; } return s; }
+function fmtDate(s){ const d=new Date(s+'T00:00:00Z'); return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',timeZone:'UTC'}); }
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2600); }
+
+// seeded RNG for repeatable demo data
+function rng(seed){ let s=seed>>>0; return ()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+
+// ---------- default settings ----------
+const DEFAULT_SETTINGS = {
+  dataSource:'live', apiBase:'/api', apiKey:'',
+  lotSize:30, strikeStep:100, testDays:30, extendDays:15,
+  pass:{ ruleFollow:95, highFlags:2, maxDDpct:10, accuracy:50, rr:1.5, pf:1.3 },
+  capitalSteps:'₹5 L → ₹15 L → ₹50 L',
+  alerts:{ telegram:'', whatsapp:'', email:'', onHigh:true, dailySummary:true, summaryTime:'15:35' }
+};
+const DEFAULT_RULES = { instrument:'BANKNIFTY', expiry:'Monthly', strikeMode:'ITM', strikeDist:1, side:'BUY', product:'MIS',
+  timeFrom:'09:20', timeTo:'14:30', maxTradesDay:4, maxLots:3, slPerLot:2000, dailyLoss:10000, hedge:false, source:'ANY' };
+
+// ---------- demo data ----------
+function buildDemo(){
+  const traders = [
+    {id:'TR-001',name:'Trader A',ra:'RA Group A',style:'Manual',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:addDays(TODAY,-41)},
+    {id:'TR-002',name:'Trader B',ra:'RA Group A',style:'Manual',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:addDays(TODAY,-41)},
+    {id:'TR-003',name:'Trader C',ra:'RA Group B',style:'Manual',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:addDays(TODAY,-41)},
+    {id:'TR-004',name:'Trader D',ra:'RA Group B',style:'Algo',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:addDays(TODAY,-41)},
+    {id:'TR-005',name:'Trader E',ra:'RA Group A',style:'Algo',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:addDays(TODAY,-24)},
+  ];
+  const accounts = [
+    {id:'AC-01',name:'Account 1',broker:'Angel One',trader:'TR-001'},
+    {id:'AC-02',name:'Account 2',broker:'Dhan',trader:'TR-001'},
+    {id:'AC-03',name:'Account 3',broker:'Zerodha',trader:'TR-003'},
+    {id:'AC-04',name:'Account 4',broker:'Fyers',trader:'TR-004'},
+    {id:'AC-05',name:'Account 5',broker:'Angel One',trader:'TR-002'},
+    {id:'AC-06',name:'Account 6',broker:'Upstox',trader:'TR-005'},
+    {id:'AC-07',name:'Account 7',broker:'Angel One',trader:'TR-001'},
+  ];
+  const rules = {};
+  traders.forEach(t=>rules[t.id]={...DEFAULT_RULES});
+  rules['TR-003'] = {...DEFAULT_RULES, product:'ANY', maxTradesDay:3};
+  rules['TR-004'] = {...DEFAULT_RULES, strikeMode:'ATM', strikeDist:0, source:'Algo', maxTradesDay:5};
+  rules['TR-005'] = {...DEFAULT_RULES, source:'Algo', maxTradesDay:4};
+  rules['TR-003'].product='MIS'; // C's rule says intraday only — he breaks it
+  const ruleLog = traders.map(t=>({trader:t.id,at:t.start+' 10:00',by:'admin',change:'Rule book created'}));
+  ruleLog.push({trader:'TR-004',at:addDays(TODAY,-30)+' 16:10',by:'admin',change:'Max trades/day 4 → 5'});
+
+  // profile per trader: winRate, avgWin, avgLoss, tpd, violation prob
+  const prof = {
+    'TR-001':{w:.56,aw:3300,al:2150,tpd:3.4,v:.012,accts:['AC-01','AC-02','AC-07']},
+    'TR-002':{w:.58,aw:2500,al:2050,tpd:4.2,v:.11,accts:['AC-05']},
+    'TR-003':{w:.41,aw:2600,al:2900,tpd:3.0,v:.20,accts:['AC-03']},
+    'TR-004':{w:.49,aw:3900,al:1850,tpd:3.6,v:.08,accts:['AC-04']},
+    'TR-005':{w:.55,aw:2400,al:1750,tpd:3.0,v:.00,accts:['AC-06']},
+  };
+  const R = rng(20261113), trades=[];
+  let spot = 51800;
+  const days=[]; for(let s=addDays(TODAY,-45); s<=TODAY; s=addDays(s,1)) if(isWeekday(s)) days.push(s);
+  const spotByDay={}; days.forEach(d=>{ spot += (R()-.48)*380; spotByDay[d]=spot; });
+  traders.forEach(t=>{
+    const p=prof[t.id], rl=rules[t.id];
+    days.filter(d=>d>=t.start).forEach(d=>{
+      let n=Math.min(rl.maxTradesDay, Math.max(1,Math.round(p.tpd + (R()-.5)*2.4)));
+      let violCount = 0;
+      for(let i=0;i<n;i++){
+        const sp = spotByDay[d] + (R()-.5)*260;
+        const atm = Math.round(sp/100)*100;
+        const ce = R()>.5;
+        let dist = rl.strikeMode==='ATM'?0:rl.strikeDist;
+        let strike = ce? atm - dist*100 : atm + dist*100;
+        let tmin = toMin(rl.timeFrom) + Math.floor(R()*(toMin(rl.timeTo)-toMin(rl.timeFrom)));
+        let lots = 1+Math.floor(R()*rl.maxLots), product='MIS', exitDate=d;
+        let win = R()<p.w;
+        let gross = win? p.aw*(0.4+R()*1.2) : -p.al*(0.4+R()*1.0);
+        gross = Math.max(gross, -rl.slPerLot*lots*0.95);
+        const doViol = R()<p.v && violCount<2;
+        if(doViol){
+          violCount++;
+          const k=Math.floor(R()*5);
+          if(k===0){ strike = ce? atm+200 : atm-200; }
+          else if(k===1){ tmin = toMin(rl.timeTo)+5+Math.floor(R()*35); }
+          else if(k===2){ gross = -(rl.slPerLot+600+R()*1800)*lots; win=false; }
+          else if(k===3){ lots = rl.maxLots+1; }
+          else { product='NRML'; exitDate = nextTradingDay(d,days); }
+        }
+        const lotSize=30, qty=lots*lotSize;
+        const entry = Math.round((260+R()*240)*20)/20;
+        const exit = Math.round((entry + gross/qty)*20)/20;
+        const hold = 6+Math.floor(R()*80);
+        const charges = Math.round(45+lots*22+R()*15);
+        trades.push({ id:uid('T'), date:d, time:fromMin(tmin), trader:t.id, account:p.accts[Math.floor(R()*p.accts.length)],
+          symbol:'BANKNIFTY', strike, opt: ce?'CE':'PE', expiryType:'Monthly', expiry:'', side:'BUY', lots, lotSize, entry, exit,
+          exitDate, exitTime: product==='NRML'?'09:40':fromMin(Math.min(tmin+hold, 15*60+25)), spot:Math.round(sp*100)/100, product,
+          source:t.style, charges, hedged:false });
+      }
+      // occasionally a 5th trade over the limit for B
+      if(t.id==='TR-002' && R()<.15){ const last=trades[trades.length-1]; for(let k=0;k<Math.max(0,rl.maxTradesDay+1-n);k++){ const c={...last,id:uid('T'),time:fromMin(toMin(last.time)+15)}; trades.push(c);} }
+    });
+  });
+  const groups = [
+    {id:'G-1',name:'RA Group A',accounts:['AC-01','AC-02','AC-03','AC-04']},
+    {id:'G-2',name:'Dealer — Gaurav',accounts:['AC-01','AC-05','AC-06']},
+    {id:'G-3',name:'Trader A — all',accounts:['AC-01','AC-02','AC-07']},
+  ];
+  return {v:1, settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), traders, accounts, rules, ruleLog, trades, groups};
+}
+function nextTradingDay(d,days){ const i=days.indexOf(d); return days[i+1]||addDays(d,1); }
+
+// ---------- store ----------
+const KEY='tts_state_v1';
+let S, ROLE='admin', USER='admin', LIVE=false, TOKEN=null, STATUS={}, USERS=[];
+function load(){ try{ const raw=localStorage.getItem(KEY); if(raw){ S=JSON.parse(raw); S.settings={...DEFAULT_SETTINGS,...S.settings}; return; } }catch(e){} S=buildDemo(); }
+function save(){ if(!LIVE){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} } invalidate(); }
+function canEdit(){ return ROLE==='admin'; }
+
+// ---------- API adapter (live deployment) ----------
+const API = {
+  async req(path, opt={}){
+    const r = await fetch('/api'+path, {...opt, headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(opt.headers||{})}});
+    if(r.status===401 && path!=='/login'){ logout(); throw new Error('Signed out — please sign in again'); }
+    if(!r.ok){ let m=r.status+''; try{ m=(await r.json()).detail||m; }catch(e){} throw new Error(m); }
+    return r.json();
+  },
+  async syncAll(){
+    const [traders,accounts,rules,trades,groups,settings,ruleLog,status] = await Promise.all([
+      this.req('/traders'), this.req('/accounts'), this.req('/rules'), this.req('/trades?from='+addDays(TODAY,-180)), this.req('/groups'),
+      this.req('/settings'), this.req('/rulelog'), this.req('/status')]);
+    Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status;
+    if(ROLE==='admin'){ try{ USERS=await this.req('/users'); }catch(e){} }
+    invalidate();
+  },
+  saveTrader:t=>API.req('/traders/'+encodeURIComponent(t.id),{method:'PUT',body:JSON.stringify(t)}),
+  saveAccount:a=>API.req('/accounts/'+encodeURIComponent(a.id),{method:'PUT',body:JSON.stringify(a)}),
+  saveRules:(id,r,change)=>API.req('/rules/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({rules:r,change})}),
+  importTrades:rows=>API.req('/trades/import',{method:'POST',body:JSON.stringify(rows)}),
+  deleteTrade:id=>API.req('/trades/'+encodeURIComponent(id),{method:'DELETE'}),
+  saveGroup:g=>API.req('/groups/'+encodeURIComponent(g.id),{method:'PUT',body:JSON.stringify(g)}),
+  deleteGroup:id=>API.req('/groups/'+encodeURIComponent(id),{method:'DELETE'}),
+};
+// In live mode: send the change to the server, then reload everything from it
+async function liveCall(fn){ if(!LIVE) return; try{ await fn(); await API.syncAll(); render(); }catch(e){ toast('Server: '+e.message); } }
+async function detectLive(){
+  if(!/^https?:$/.test(location.protocol)) return false;
+  try{ const c=new AbortController(); setTimeout(()=>c.abort(),2500); const r=await fetch('/api/health',{signal:c.signal}); if(!r.ok) return false; const j=await r.json(); return j.mode==='live'; }catch(e){ return false; }
+}
+
+// ---------- core calculations ----------
+function tradePnl(t){ const dir = t.side==='SELL'?-1:1; return (t.exit - t.entry)*t.lots*t.lotSize*dir - (t.charges||0); }
+function grossPnl(t){ const dir = t.side==='SELL'?-1:1; return (t.exit - t.entry)*t.lots*t.lotSize*dir; }
+function moneyness(t, step){ // +n = n strikes ITM, -n = n strikes OTM, 0 = ATM
+  if(!t.spot) return {atm:null,d:NaN};
+  const atm = Math.round(t.spot/step)*step;
+  const d = (t.opt==='CE' ? (atm - t.strike) : (t.strike - atm))/step;
+  return {atm, d:Math.round(d)};
+}
+function mLabel(d){ if(isNaN(d)) return 'spot n/a'; return d===0?'ATM': d>0? d+' ITM' : (-d)+' OTM'; }
+function expectedStrike(t, r, step){ if(!t.spot) return '—'; const atm=Math.round(t.spot/step)*step; const n = r.strikeMode==='ATM'?0:r.strikeDist; const sign = r.strikeMode==='ITM'?1:(r.strikeMode==='OTM'?-1:0); return t.opt==='CE'? atm - sign*n*step : atm + sign*n*step; }
+
+// The rule checker: compares each trade with the trader's own rules
+function checkAll(){
+  const step=S.settings.strikeStep, flags=[], byTrade={};
+  const groups = {};
+  S.trades.forEach(t=>{ (groups[t.trader+'|'+t.date] ||= []).push(t); });
+  Object.values(groups).forEach(list=>{
+    list.sort((a,b)=>a.time.localeCompare(b.time));
+    const r = S.rules[list[0].trader] || DEFAULT_RULES;
+    let dayPnl=0, stopHit=false;
+    list.forEach((t,i)=>{
+      const f=[]; const add=(rule,did,level)=>f.push({rule,did,level});
+      if(r.instrument!=='ANY' && t.symbol!==r.instrument) add('Instrument: '+r.instrument+' only', 'Traded '+t.symbol, 'High');
+      if(r.strikeMode!=='ANY' && t.spot){
+        const m=moneyness(t,step), want = r.strikeMode==='ATM'?0:(r.strikeMode==='ITM'?r.strikeDist:-r.strikeDist);
+        if(m.d!==want) add('Strike: '+(r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode)+' only',
+          `Bought ${t.strike} ${t.opt} = ${mLabel(m.d)} (spot ${Math.round(t.spot).toLocaleString('en-IN')}, right strike ${expectedStrike(t,r,step)} ${t.opt})`, 'High');
+      }
+      if(r.side!=='ANY' && t.side!==r.side) add(r.side==='BUY'?'Option buying only':'Option selling only', t.side+' trade', 'High');
+      if(r.product==='MIS' && (t.product==='NRML' || t.exitDate!==t.date)) add('Intraday only', 'Carried position overnight (exit '+fmtDate(t.exitDate)+')', 'High');
+      if(r.timeFrom && toMin(t.time)<toMin(r.timeFrom)) add('Entry from '+r.timeFrom, 'Entry at '+t.time, 'Medium');
+      if(r.timeTo && toMin(t.time)>toMin(r.timeTo)) add('Entry till '+r.timeTo, 'New entry at '+t.time, 'Medium');
+      if(r.maxTradesDay && i>=r.maxTradesDay) add('Max '+r.maxTradesDay+' trades / day', 'Took trade no. '+(i+1), 'Medium');
+      if(r.maxLots && t.lots>r.maxLots) add('Max '+r.maxLots+' lots / trade', 'Took '+t.lots+' lots', 'Medium');
+      const g=grossPnl(t);
+      if(r.slPerLot && g<0 && -g/t.lots > r.slPerLot) add('SL max '+inr(r.slPerLot)+' / lot', 'Lost '+inr(-g/t.lots)+' per lot', 'High');
+      if(r.dailyLoss && stopHit) add('Stop after '+inr(r.dailyLoss)+' day loss', 'Kept trading after loss limit hit', 'High');
+      if(r.source!=='ANY' && t.source!==r.source) add(r.source+' trades only', 'Trade placed '+t.source, 'Low');
+      if(r.hedge && !t.hedged) add('Hedge required', 'No hedge leg', 'Medium');
+      if(r.expiry!=='ANY' && t.expiryType && t.expiryType!==r.expiry) add(r.expiry+' expiry only', 'Traded '+t.expiryType+' expiry', 'Low');
+      dayPnl += tradePnl(t); if(r.dailyLoss && dayPnl <= -r.dailyLoss) stopHit=true;
+      byTrade[t.id]=f; f.forEach(x=>flags.push({...x, trade:t}));
+    });
+  });
+  flags.sort((a,b)=> (b.trade.date+b.trade.time).localeCompare(a.trade.date+a.trade.time));
+  return {flags, byTrade};
+}
+let _chk=null; function chk(){ return _chk ||= checkAll(); }
+function invalidate(){ _chk=null; }
+
+function metrics(trades, capital){
+  const T=[...trades].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  const {byTrade}=chk();
+  const pn=T.map(tradePnl), wins=pn.filter(x=>x>0), loss=pn.filter(x=>x<=0);
+  const sw=wins.reduce((a,b)=>a+b,0), sl=-loss.reduce((a,b)=>a+b,0);
+  const days={}; T.forEach((t,i)=>{ days[t.date]=(days[t.date]||0)+pn[i]; });
+  const dk=Object.keys(days).sort();
+  let cum=0,peak=0,mdd=0,mddDay=null; const series=[], dd=[];
+  dk.forEach(d=>{ cum+=days[d]; peak=Math.max(peak,cum); const x=cum-peak; if(x<mdd){mdd=x;mddDay=d;} series.push(cum); dd.push(x); });
+  let streak=0,maxStreak=0; pn.forEach(x=>{ if(x<=0){streak++;maxStreak=Math.max(maxStreak,streak);} else streak=0; });
+  const holds=T.filter(t=>t.exitDate===t.date&&t.exitTime).map(t=>toMin(t.exitTime)-toMin(t.time));
+  const clean=T.filter(t=>!(byTrade[t.id]||[]).length).length;
+  const high=T.reduce((a,t)=>a+(byTrade[t.id]||[]).filter(f=>f.level==='High').length,0);
+  const flagsN=T.reduce((a,t)=>a+(byTrade[t.id]||[]).length,0);
+  const dv=dk.map(d=>days[d]);
+  return {
+    n:T.length, total:pn.reduce((a,b)=>a+b,0), accuracy: T.length? wins.length/T.length*100 : NaN,
+    rr: (wins.length&&loss.length)? (sw/wins.length)/(sl/loss.length) : NaN,
+    pf: sl? sw/sl : (sw?Infinity:NaN), mdd:-mdd, mddPct: capital? -mdd/capital*100 : NaN, mddDay,
+    tpd: dk.length? T.length/dk.length : 0, days:dk.length,
+    intraday: T.length? T.filter(t=>t.product!=='NRML'&&t.exitDate===t.date).length/T.length*100 : NaN,
+    manual: T.length? T.filter(t=>t.source==='Manual').length/T.length*100 : NaN,
+    ruleFollow: T.length? clean/T.length*100 : NaN, high, flagsN,
+    best: dv.length? Math.max(...dv):0, worst: dv.length? Math.min(...dv):0,
+    bestDay: dk[dv.indexOf(Math.max(...dv))], worstDay: dk[dv.indexOf(Math.min(...dv))],
+    streak:maxStreak, hold: holds.length? holds.reduce((a,b)=>a+b,0)/holds.length : NaN,
+    charges: T.reduce((a,t)=>a+(t.charges||0),0), dayKeys:dk, dayVals:dv, series, dd, grossWin:sw, grossLoss:sl
+  };
+}
+function trader(id){ return S.traders.find(t=>t.id===id); }
+function account(id){ return S.accounts.find(a=>a.id===id); }
+function tradesOf(id, from, to){ return S.trades.filter(t=>t.trader===id && (!from||t.date>=from) && (!to||t.date<=to)); }
+function testWindow(t){ const end = nthTradingDay(t.start, S.settings.testDays + (t.extended? S.settings.extendDays:0)); return {from:t.start, to:end}; }
+function testDay(t){ return Math.min(tradingDaysBetween(t.start, TODAY), S.settings.testDays + (t.extended?S.settings.extendDays:0)); }
+
+function scorecard(t){
+  const w=testWindow(t), m=metrics(tradesOf(t.id,w.from,w.to), t.testCapital), P=S.settings.pass;
+  const checks=[
+    {k:'Rule-follow score', must:'≥ '+P.ruleFollow+'%', val:pct(m.ruleFollow,1), ok:m.ruleFollow>=P.ruleFollow},
+    {k:'High red flags', must:'≤ '+P.highFlags, val:m.high, ok:m.high<=P.highFlags},
+    {k:'Max drawdown', must:'≤ '+P.maxDDpct+'% of capital', val:pct(m.mddPct,1)+' ('+inr(m.mdd)+')', ok:m.mddPct<=P.maxDDpct},
+    {k:'Accuracy', must:'≥ '+P.accuracy+'%', val:pct(m.accuracy,1), ok:m.accuracy>=P.accuracy},
+    {k:'Risk : Reward', must:'≥ 1 : '+P.rr, val:isFinite(m.rr)?'1 : '+m.rr.toFixed(2):'—', ok:m.rr>=P.rr},
+    {k:'Profit factor', must:'≥ '+P.pf, val:isFinite(m.pf)?m.pf.toFixed(2):'—', ok:m.pf>=P.pf},
+  ];
+  const miss=checks.filter(c=>!c.ok).length, day=testDay(t), total=S.settings.testDays+(t.extended?S.settings.extendDays:0);
+  const done = day>=total;
+  const result = miss===0?'Pass':(miss<=2?'Watch':'Fail');
+  return {m, checks, miss, result, done, day, total, w};
+}
+
+// ---------- layout ----------
+const NAV = [
+  ['overview','Overview','▦'],['sec','Record & check'],['traders','Trader profiles','👤'],['rules','Rule book','📘'],['trades','Trade log','≣'],['flags','Red flags','⚑'],
+  ['sec','Compare & decide'],['report','Trader report','📈'],['compare','Compare traders','⇅'],['scorecard','30-day scorecard','✓'],['groups','Account groups','▤'],
+  ['sec','System'],['settings','Settings & API','⚙']
+];
+let VIEW='overview', SEL={trader:'TR-001', range:'test', from:addDays(TODAY,-30), to:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
+let charts=[];
+function shell(inner){
+  const nf = chk().flags.filter(f=>f.trade.date===TODAY).length;
+  return `<div class="app"><aside>
+    <div class="brand"><div class="logo">TT</div><div><b>Trader Tracking</b><small>Record · Check · Decide</small></div></div>
+    <nav class="nav">${NAV.map(n=> n[0]==='sec'?`<div class="sec">${n[1]}</div>`:
+      `<a href="#${n[0]}" onclick="go('${n[0]}');return false" class="${VIEW===n[0]?'on':''}"><span style="width:18px;text-align:center">${n[2]}</span>${n[1]}${n[0]==='flags'&&nf?`<span class="ct">${nf}</span>`:''}</a>`).join('')}</nav>
+    <div class="side-foot">Signed in as <b>${esc(USER)}</b> · <span class="pill ${ROLE==='admin'?'p-live':'p-test'}">${ROLE}</span><br>
+      Data: <b>${LIVE?'Live · Zebu':'Demo data'}</b>${LIVE&&STATUS.poll?.last?`<br><span style="font-size:11px">Last sync ${esc(STATUS.poll.last.slice(11,16))}</span>`:''}<br>
+      <span style="color:#5b678a">Tracking only — places no trades.</span><br><a href="#" onclick="logout();return false">Sign out</a></div>
+  </aside><main>${inner}</main></div>`;
+}
+function header(title, sub, right=''){ return `<div class="top"><div><h1>${title}</h1>${sub?`<div class="sub">${sub}</div>`:''}</div><div class="sp"></div>${right}</div>`; }
+function statusPill(s){ const m={Testing:'p-test',Live:'p-live',Watch:'p-watch','On watch':'p-watch',Stopped:'p-stop'}; return `<span class="pill ${m[s]||'p-low'}">${s==='Watch'?'On watch':s}</span>`; }
+function levelPill(l){ return `<span class="pill ${l==='High'?'p-high':l==='Medium'?'p-med':'p-low'}">${l}</span>`; }
+function resultPill(r){ return `<span class="pill ${r==='Pass'?'p-pass':r==='Watch'?'p-watch':r==='Fail'?'p-fail':'p-test'}">${r}</span>`; }
+function traderSelect(id, val, all){ return `<select id="${id}">${all?`<option value="">All traders</option>`:''}${S.traders.map(t=>`<option value="${t.id}" ${t.id===val?'selected':''}>${esc(t.name)} · ${t.id}</option>`).join('')}</select>`; }
+function kpi(l,v,h='',c=''){ return `<div class="card kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div>${h?`<div class="h">${h}</div>`:''}</div>`; }
+
+// ---------- views ----------
+const V = {};
+V.overview = () => {
+  const {flags}=chk(), today=flags.filter(f=>f.trade.date===TODAY);
+  const tToday=S.trades.filter(t=>t.date===TODAY);
+  const flaggedTr=new Set(today.map(f=>f.trade.trader));
+  const all=metrics(S.trades);
+  const pnlToday=tToday.reduce((a,t)=>a+tradePnl(t),0);
+  const cnt=s=>S.traders.filter(t=>t.status===s).length;
+  return header('Overview', 'Today · '+fmtDate(TODAY)+' 2026 · all traders', `<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
+  `<div class="grid k6">
+    ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
+    ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
+    ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
+    ${kpi('P&L today', inrS(pnlToday), tToday.length+' trades', cls(pnlToday))}
+    ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
+    ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
+  </div>
+  <div class="card" style="margin-top:14px"><h3>The journey of one trader</h3>
+    <div class="flow">${[['Add trader','Profile, accounts, style','traders'],['Write rules','His system saved as rules','rules'],['30-day test','Small capital, we record all','trades'],['Report card','Numbers + red flags','scorecard'],['Big capital','Only if passed — keep tracking','compare']]
+      .map((s,i)=>`<div class="st" style="cursor:pointer" onclick="go('${s[2]}')"><span class="no">${i+1}</span> <b>${s[0]}</b><span>${s[1]}</span></div>`).join('')}</div></div>
+  <div class="grid c21" style="margin-top:14px">
+    <div class="card"><h3>Latest red flags <small>most recent first</small></h3>${flagTable(flags.slice(0,7))}</div>
+    <div class="card"><h3>30-day test progress</h3>
+      ${S.traders.map(t=>{ const sc=scorecard(t); return `<div style="margin-bottom:12px;cursor:pointer" onclick="openReport('${t.id}')">
+        <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span>${statusPill(t.status)} ${t.status==='Testing'||t.status==='Watch'?resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total):''}</span></div>
+        <div class="bar" style="margin-top:6px"><i style="width:${Math.min(100,sc.day/sc.total*100)}%;background:${sc.result==='Pass'?'var(--green)':sc.result==='Watch'?'var(--amber)':'var(--red)'}"></i></div>
+        <div class="muted" style="font-size:11.5px;margin-top:3px">Rule-follow ${pct(sc.m.ruleFollow)} · P&L ${inrS(sc.m.total)} · ${sc.miss} check(s) missed</div></div>`; }).join('')}
+    </div>
+  </div>`;
+};
+function flagTable(list, showDate=true){
+  if(!list.length) return `<div class="muted" style="padding:14px">No red flags. All rules followed ✓</div>`;
+  return `<div class="tbl-wrap"><table><tr>${showDate?'<th>Date</th>':''}<th>Time</th><th>Trader</th><th>Rule broken</th><th>What he actually did</th><th>Level</th></tr>
+  ${list.map(f=>`<tr class="click" onclick="openTrade('${f.trade.id}')">${showDate?`<td class="mono">${fmtDate(f.trade.date)}</td>`:''}<td class="mono">${f.trade.time}</td><td>${esc(trader(f.trade.trader)?.name||f.trade.trader)}</td><td>${esc(f.rule)}</td><td class="flagtxt">${esc(f.did)}</td><td>${levelPill(f.level)}</td></tr>`).join('')}</table></div>`;
+}
+
+V.traders = () => header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', canEdit()?`<button class="btn pri" onclick="editTrader()">+ Add trader</button>`:'') +
+  `<div class="card"><table><tr><th>Trader / ID</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th>Status</th><th></th></tr>
+  ${S.traders.map(t=>{ const acc=S.accounts.filter(a=>a.trader===t.id); const sc=scorecard(t); return `<tr>
+    <td><b>${esc(t.name)}</b><div class="muted mono" style="font-size:11.5px">${t.id}</div></td>
+    <td>${acc.length} <span class="muted">(${[...new Set(acc.map(a=>a.broker))].join(', ')||'—'})</span></td>
+    <td>${esc(t.ra)}</td><td>${t.style}</td><td>${t.holding}</td><td>${esc(t.segment)}</td><td class="n">${inr(t.testCapital)}</td>
+    <td>${statusPill(t.status)}${t.status==='Testing'||t.status==='Watch'?`<div class="muted" style="font-size:11.5px;margin-top:3px">Day ${sc.day} of ${sc.total}</div>`:''}</td>
+    <td style="white-space:nowrap"><button class="btn sm" onclick="openReport('${t.id}')">Report</button> <button class="btn sm" onclick="openRules('${t.id}')">Rules</button> ${canEdit()?`<button class="btn sm" onclick="editTrader('${t.id}')">Edit</button>`:''}</td></tr>`; }).join('')}
+  </table></div>
+  <div class="grid k2" style="margin-top:14px">
+    <div class="card"><h3>Broker accounts</h3><div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link</th>':''}<th>Trader</th><th class="n">Trades</th>${canEdit()?'<th></th>':''}</tr>
+      ${S.accounts.map(a=>`<tr><td>${esc(a.name)} <span class="muted mono">${a.id}</span></td><td>${esc(a.broker)}</td>${LIVE?`<td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td>`:''}<td>${esc(trader(a.trader)?.name||'—')}</td><td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>${canEdit()?`<td>${LIVE&&a.broker==='Zebu'?`<button class="btn sm pri" onclick="linkZebu('${a.id}')">${a.link==='Linked'?'Re-link':'Link Zebu login'}</button> `:''}<button class="btn sm" onclick="editAccount('${a.id}')">Edit</button></td>`:''}</tr>`).join('')}
+    </table></div>${canEdit()?`<button class="btn sm" style="margin-top:10px" onclick="editAccount()">+ Add account</button>`:''}</div>
+    <div class="card"><h3>Status of each trader</h3>
+      <p>${statusPill('Testing')} &nbsp;Inside the 30-day test</p><p>${statusPill('Live')} &nbsp;Passed — on big capital</p>
+      <p>${statusPill('Watch')} &nbsp;Test extended by ${S.settings.extendDays} days</p><p>${statusPill('Stopped')} &nbsp;Failed or paused</p></div>
+  </div>`;
+
+V.rules = () => {
+  const id=SEL.trader, r=S.rules[id]||{...DEFAULT_RULES}, dis=canEdit()?'':'disabled';
+  const opt=(k,arr)=>`<select id="r_${k}" ${dis}>${arr.map(x=>`<option ${String(r[k])===String(x)?'selected':''}>${x}</option>`).join('')}</select>`;
+  const inp=(k,type='text')=>`<input id="r_${k}" type="${type}" value="${esc(r[k])}" ${dis}>`;
+  const log=S.ruleLog.filter(l=>l.trader===id).sort((a,b)=>b.at.localeCompare(a.at));
+  return header('Rule book','Understand his system, save it as rules. Every change is saved with date and who changed it.', traderSelect('selTr',id)) +
+  `<div class="grid c21"><div class="card"><h3>${esc(trader(id)?.name)}'s rules</h3>
+    <div class="form">
+      <label class="f">Instrument / index ${opt('instrument',['BANKNIFTY','NIFTY','FINNIFTY','SENSEX','ANY'])}</label>
+      <label class="f">Expiry choice ${opt('expiry',['Weekly','Monthly','ANY'])}</label>
+      <label class="f">Buy or sell ${opt('side',['BUY','SELL','ANY'])}</label>
+      <label class="f">Strike type ${opt('strikeMode',['ITM','ATM','OTM','ANY'])}</label>
+      <label class="f">Strike distance (strikes from ATM) ${inp('strikeDist','number')}</label>
+      <label class="f">Intraday / carry forward ${opt('product',['MIS','ANY'])}<span style="font-size:11px">MIS = intraday only · ANY = carry allowed</span></label>
+      <label class="f">Entry from ${inp('timeFrom','time')}</label>
+      <label class="f">Entry till ${inp('timeTo','time')}</label>
+      <label class="f">Max trades per day ${inp('maxTradesDay','number')}</label>
+      <label class="f">Max lots per trade ${inp('maxLots','number')}</label>
+      <label class="f">Stop-loss per trade (₹ per lot) ${inp('slPerLot','number')}</label>
+      <label class="f">Max loss per day (₹) → stop ${inp('dailyLoss','number')}</label>
+      <label class="f">Manual / algo ${opt('source',['ANY','Manual','Algo'])}</label>
+      <label class="f">Hedge required ${opt('hedge',['false','true'])}</label>
+    </div>
+    ${canEdit()?`<div class="row" style="margin-top:14px"><button class="btn pri" onclick="saveRules()">Save rules</button><span class="muted" style="font-size:12px">Saving re-checks every past trade against the new rules.</span></div>`:`<div class="note" style="margin-top:12px">Viewer role — read only.</div>`}
+  </div>
+  <div><div class="card"><h3>In plain words</h3>${ruleSummary(r).map(x=>`<div style="padding:5px 0;border-bottom:1px solid #1c2640">${x}</div>`).join('')}</div>
+  <div class="card" style="margin-top:14px"><h3>Change history</h3>${log.map(l=>`<div style="padding:6px 0;border-bottom:1px solid #1c2640;font-size:12.5px"><span class="mono muted">${l.at}</span> · <b>${esc(l.by)}</b><br>${esc(l.change)}</div>`).join('')||'<span class="muted">No changes yet</span>'}</div></div></div>`;
+};
+function ruleSummary(r){ return [
+  `Instrument: <b>${r.instrument}</b> · ${r.expiry} expiry`,
+  `Strike: <b>${r.strikeMode==='ANY'?'any':r.strikeMode==='ATM'?'ATM only':'Only '+r.strikeDist+' strike '+r.strikeMode}</b>`,
+  `Trade type: <b>${r.side==='ANY'?'buy or sell':r.side==='BUY'?'buying only':'selling only'}</b>, <b>${r.product==='MIS'?'intraday only — no carry forward':'carry forward allowed'}</b>`,
+  `Entry time: <b>${r.timeFrom} to ${r.timeTo}</b>`,
+  `Max <b>${r.maxTradesDay}</b> trades/day · max <b>${r.maxLots}</b> lots/trade`,
+  `Stop-loss: max <b>${inr(+r.slPerLot)}</b> per lot · daily loss <b>${inr(+r.dailyLoss)}</b> → stop for the day`,
+  `Placed by: <b>${r.source==='ANY'?'manual or algo':r.source}</b>${String(r.hedge)==='true'?' · <b>hedge required</b>':''}` ]; }
+
+V.trades = () => {
+  const F=SEL.tradeFilter, {byTrade}=chk();
+  let list=S.trades.filter(t=>(!F.trader||t.trader===F.trader)&&(!F.from||t.date>=F.from)&&(!F.to||t.date<=F.to));
+  if(F.flag==='flag') list=list.filter(t=>byTrade[t.id]?.length); if(F.flag==='ok') list=list.filter(t=>!byTrade[t.id]?.length);
+  list.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+  const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+tradePnl(t),0);
+  return header('Trade log','One row per trade — pulled from the broker (read-only API) or uploaded trade book', `${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
+  `<div class="card" style="margin-bottom:14px"><div class="row">${traderSelect('tfTr',F.trader,true)}
+    <select id="tfFlag"><option value="">All trades</option><option value="flag" ${F.flag==='flag'?'selected':''}>With red flag</option><option value="ok" ${F.flag==='ok'?'selected':''}>Clean (OK)</option></select>
+    <input type="date" id="tfFrom" value="${F.from}"> → <input type="date" id="tfTo" value="${F.to}">
+    <button class="btn sm" onclick="applyTF()">Apply</button><button class="btn sm" onclick="SEL.tradeFilter={trader:'',flag:'',from:'',to:''};render()">Clear</button>
+    <div style="flex:1"></div><span class="muted">${list.length} trades · Net <b class="${cls(tot)}">${inrS(tot)}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
+  <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr><th>Date</th><th>Time</th><th>Trader</th><th>Account</th><th>Symbol</th><th>Strike</th><th>Spot</th><th>Side</th><th class="n">Lots</th><th class="n">Entry</th><th class="n">Exit</th><th>Product</th><th>Source</th><th class="n">Charges</th><th class="n">Net P&L</th><th>Check</th></tr>
+  ${shown.map(t=>{ const f=byTrade[t.id]||[], p=tradePnl(t), m=moneyness(t,S.settings.strikeStep); return `<tr class="click" onclick="openTrade('${t.id}')">
+    <td class="mono">${fmtDate(t.date)}</td><td class="mono">${t.time}</td><td>${esc(trader(t.trader)?.name||t.trader)}</td><td>${esc(account(t.account)?.name||t.account)}</td>
+    <td>${t.symbol}</td><td class="mono">${t.strike} ${t.opt} <span class="muted" style="font-size:11px">${mLabel(m.d)}</span></td><td class="mono">${t.spot?Math.round(t.spot).toLocaleString('en-IN'):'—'}</td><td>${t.side}</td><td class="n">${t.lots}</td>
+    <td class="n">${t.entry.toFixed(2)}</td><td class="n">${t.open?'<span class="pill p-test">OPEN</span> '+t.exit.toFixed(2):t.exit.toFixed(2)}</td><td>${t.product==='NRML'||t.exitDate!==t.date?'NRML (CF)':'MIS'}</td><td>${t.source}</td><td class="n">${t.chargesEstimated?'~':''}${inr(t.charges)}</td>
+    <td class="n ${cls(p)}">${inr(p)}</td><td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td></tr>`; }).join('')}
+  </table></div></div>`;
+};
+
+V.flags = () => {
+  const F=SEL.flagFilter, {flags}=chk();
+  const from = F.range==='today'?TODAY : F.range==='week'?addDays(TODAY,-6) : F.range==='month'?TODAY.slice(0,8)+'01' : '';
+  const list=flags.filter(f=>(!F.level||f.level===F.level)&&(!F.trader||f.trade.trader===F.trader)&&(!from||f.trade.date>=from));
+  const today=flags.filter(f=>f.trade.date===TODAY), all=metrics(S.trades);
+  const byRule={}; list.forEach(f=>{ const k=f.rule.split(':')[0].replace(/\d+/g,'#'); byRule[k]=(byRule[k]||0)+1; });
+  return header('Red flags','Every broken rule, in plain words', `<button class="btn" onclick="exportCSV('flags')">Export CSV</button>`) +
+  `<div class="grid k4">${kpi('Red flags today',today.length,'','neg')}${kpi('Traders with a flag',new Set(today.map(f=>f.trade.trader)).size+' of '+S.traders.length,'today')}${kpi('Rule-follow score (all)',pct(all.ruleFollow),'trades with no flag ÷ total')}${kpi('Flags in view',list.length,list.filter(f=>f.level==='High').length+' high')}</div>
+  <div class="card" style="margin:14px 0"><div class="row"><div class="tabs">${['today','week','month','all'].map(r=>`<button class="${F.range===r?'on':''}" onclick="SEL.flagFilter.range='${r}';render()">${r==='all'?'All':r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div>
+    ${traderSelect('ffTr',F.trader,true)}<select id="ffLv"><option value="">All levels</option>${['High','Medium','Low'].map(l=>`<option ${F.level===l?'selected':''}>${l}</option>`).join('')}</select>
+    <div style="flex:1"></div>${Object.entries(byRule).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="chip bad">${esc(k)} · ${v}</span>`).join('')}</div></div>
+  <div class="card">${flagTable(list)}</div>
+  <div class="card" style="margin-top:14px"><h3>How a red flag is raised</h3><div class="flow">
+    <div class="st"><b>New trade comes in</b><span>From broker API or uploaded trade book</span></div><div class="st"><b>Compare with each of his rules</b><span>Strike, time, trades/day, lots, SL, daily loss, intraday, source, hedge</span></div>
+    <div class="st"><b class="pos">All rules followed → green, OK</b><b class="neg" style="margin-top:6px">Any rule broken → red flag + reason</b></div></div></div>`;
+};
+
+V.report = () => {
+  const t=trader(SEL.trader); if(!t) return header('Trader report','No trader');
+  let from, to=TODAY, label;
+  if(SEL.range==='test'){ const w=testWindow(t); from=w.from; to=w.to; label='Test period ('+S.settings.testDays+' trading days)'; }
+  else if(SEL.range==='month'){ from=TODAY.slice(0,8)+'01'; label='This month'; }
+  else if(SEL.range==='custom'){ from=SEL.from; to=SEL.to; label='Custom'; }
+  else { from=''; label='All time'; }
+  const tr=tradesOf(t.id,from,to), m=metrics(tr,t.testCapital), {byTrade}=chk(), sc=scorecard(t);
+  const fl=tr.flatMap(x=>(byTrade[x.id]||[]).map(f=>({...f,trade:x}))).sort((a,b)=>(b.trade.date+b.trade.time).localeCompare(a.trade.date+a.trade.time));
+  setTimeout(()=>drawReportCharts(m),0);
+  return header(esc(t.name)+' — report card', `${t.id} · ${t.style} · ${t.holding} · ${esc(t.segment)} · ${label}`,
+    `${traderSelect('selTr',t.id)}<div class="tabs">${[['test','Test period'],['month','This month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${SEL.range===k?'on':''}" onclick="SEL.range='${k}';render()">${l}</button>`).join('')}</div>
+     ${SEL.range==='custom'?`<input type="date" id="rFrom" value="${SEL.from}"><input type="date" id="rTo" value="${SEL.to}"><button class="btn sm" onclick="SEL.from=$('#rFrom').value;SEL.to=$('#rTo').value;render()">Go</button>`:''}
+     <button class="btn" onclick="exportCSV('report')">Export</button>`) +
+  `<div class="grid k6">${kpi('Total P&L',inrS(m.total),m.n+' trades',cls(m.total))}${kpi('Accuracy',pct(m.accuracy),'winning ÷ total trades')}${kpi('Risk : Reward',isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—','avg win ÷ avg loss')}
+   ${kpi('Max drawdown',inr(m.mdd),pct(m.mddPct,1)+' of capital','neg')}${kpi('Trades / day',m.tpd.toFixed(1),m.days+' trading days')}${kpi('Rule-follow',pct(m.ruleFollow),m.flagsN+' flags · '+m.high+' high',m.ruleFollow>=S.settings.pass.ruleFollow?'pos':'amb')}</div>
+  <div class="grid c21" style="margin-top:14px"><div class="card"><h3>Profit growth <small>₹, cumulative</small><span style="flex:1"></span><small>Intraday ${pct(m.intraday)} · Manual ${pct(m.manual)} · ${m.n} trades</small></h3><div style="height:240px"><canvas id="cGrowth"></canvas></div>
+    <h3 style="margin-top:16px">Drawdown <small>fall from last top · worst ${inr(-m.mdd)}${m.mddDay?' on '+fmtDate(m.mddDay):''}</small></h3><div style="height:150px"><canvas id="cDD"></canvas></div></div>
+   <div><div class="card"><h3>All the numbers</h3><table class="checklist">
+     ${[['Profit factor',isFinite(m.pf)?m.pf.toFixed(2):'—'],['Total win / total loss',inr(m.grossWin)+' / '+inr(m.grossLoss)],['Best day',m.bestDay?inr(m.best)+' · '+fmtDate(m.bestDay):'—'],['Worst day',m.worstDay?inr(m.worst)+' · '+fmtDate(m.worstDay):'—'],
+       ['Longest losing streak',m.streak+' trades'],['Avg holding time',isFinite(m.hold)?Math.round(m.hold)+' min':'—'],['Intraday vs carry fwd',pct(m.intraday)+' / '+pct(100-m.intraday)],['Manual vs algo',pct(m.manual)+' / '+pct(100-m.manual)],['Charges paid',inr(m.charges)],['Test capital',inr(t.testCapital)]]
+       .map(([a,b])=>`<tr><td class="muted">${a}</td><td class="mono">${b}</td></tr>`).join('')}</table></div>
+     <div class="card" style="margin-top:14px"><h3>30-day scorecard ${resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total)}</h3>${sc.checks.map(c=>`<div class="row" style="justify-content:space-between;padding:4px 0"><span>${c.ok?'✅':'❌'} ${c.k}</span><span class="mono muted" style="font-size:12px">${c.val}</span></div>`).join('')}
+       ${sc.done?'':`<div class="muted" style="font-size:12px;margin-top:6px">Provisional — ${sc.total-sc.day} trading days left. Result if test ended today: <b>${sc.result}</b></div>`}</div></div></div>
+  <div class="grid k2" style="margin-top:14px"><div class="card"><h3>Daily P&L calendar</h3>${calendar(m)}</div>
+   <div class="card"><h3>Red flag history <small>${fl.length} in period</small></h3>${flagTable(fl.slice(0,40))}</div></div>`;
+};
+function calendar(m){
+  if(!m.dayKeys.length) return '<span class="muted">No trades</span>';
+  const map={}; m.dayKeys.forEach((d,i)=>map[d]=m.dayVals[i]); const mx=Math.max(...m.dayVals.map(Math.abs),1);
+  const first=m.dayKeys[0], last=m.dayKeys[m.dayKeys.length-1];
+  let s=first; while(new Date(s+'T00:00:00Z').getUTCDay()!==1) s=addDays(s,-1);
+  let html='<div class="cal">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="hd">${d}</div>`).join('');
+  for(; s<=last; s=addDays(s,1)){ const v=map[s]; const a=v==null?0:Math.min(1,Math.abs(v)/mx)*.8+.15;
+    html+= v==null? `<div style="background:#0f1730;color:#3d4a6b">${s.slice(8)}</div>` : `<div title="${s}: ${inr(v)}" style="background:${v>=0?`rgba(34,195,142,${a})`:`rgba(255,93,108,${a})`}"><b>${s.slice(8)}</b>${inrS(v).replace('₹','')}</div>`; }
+  return html+'</div>';
+}
+function drawReportCharts(m){
+  charts.forEach(c=>c.destroy()); charts=[]; if(!window.Chart) return;
+  const labels=m.dayKeys.map(fmtDate), base={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>inr(c.parsed.y)}}},scales:{x:{ticks:{color:'#8a96b2',maxTicksLimit:10},grid:{color:'#1c2640'}},y:{ticks:{color:'#8a96b2',callback:v=>inrS(v)},grid:{color:'#1c2640'}}}};
+  const g=$('#cGrowth'), d=$('#cDD');
+  if(g) charts.push(new Chart(g,{type:'line',data:{labels,datasets:[{data:m.series,borderColor:'#22c38e',backgroundColor:'rgba(34,195,142,.12)',fill:true,tension:.25,pointRadius:0,borderWidth:2}]},options:base}));
+  if(d) charts.push(new Chart(d,{type:'line',data:{labels,datasets:[{data:m.dd,borderColor:'#ff5d6c',backgroundColor:'rgba(255,93,108,.18)',fill:true,tension:.2,pointRadius:0,borderWidth:1.5}]},options:base}));
+}
+
+V.compare = () => {
+  const C=SEL.cmp;
+  let rows=S.traders.filter(t=>(!C.status||t.status===C.status)&&(!C.style||t.style===C.style)&&(!C.hold||t.holding===C.hold)).map(t=>{ const sc=scorecard(t); return {t,sc,m:sc.m}; });
+  const key={ruleFollow:r=>r.m.ruleFollow,total:r=>r.m.total,accuracy:r=>r.m.accuracy,rr:r=>r.m.rr,mddPct:r=>-r.m.mddPct,pf:r=>r.m.pf}[C.sort];
+  rows.sort((a,b)=>(key(b)||-1e9)-(key(a)||-1e9));
+  const sel=(id,v,opts)=>`<select id="${id}">${opts.map(([val,l])=>`<option value="${val}" ${v===val?'selected':''}>${l}</option>`).join('')}</select>`;
+  return header('Compare traders','All traders on one board — same test, same rules, fair comparison','<button class="btn" onclick="exportCSV(\'compare\')">Export CSV</button>') +
+  `<div class="card" style="margin-bottom:14px"><div class="row">Sort ${sel('cSort',C.sort,[['ruleFollow','Rule-follow'],['total','P&L'],['accuracy','Accuracy'],['rr','Risk:Reward'],['pf','Profit factor'],['mddPct','Lowest drawdown']])}
+    ${sel('cStatus',C.status,[['','All status'],['Testing','Testing'],['Live','Live'],['Watch','On watch'],['Stopped','Stopped']])}
+    ${sel('cStyle',C.style,[['','Manual / Algo'],['Manual','Manual'],['Algo','Algo']])}${sel('cHold',C.hold,[['','Intraday / CF'],['Intraday','Intraday'],['Carry forward','Carry forward']])}
+    <span class="muted" style="font-size:12px">Numbers are for each trader's test window.</span></div></div>
+  <div class="card"><table><tr><th>Trader</th><th>Status</th><th class="n">Days</th><th class="n">P&L</th><th class="n">Accuracy</th><th class="n">RR</th><th class="n">Max DD</th><th class="n">Profit factor</th><th class="n">Rule-follow</th><th class="n">High flags</th><th>Result</th></tr>
+  ${rows.map(({t,sc,m})=>`<tr class="click" onclick="openReport('${t.id}')"><td><b>${esc(t.name)}</b> <span class="muted">${t.style} · ${t.holding}</span></td><td>${statusPill(t.status)}</td><td class="n">${sc.day}</td>
+    <td class="n ${cls(m.total)}">${inrS(m.total)}</td><td class="n">${pct(m.accuracy)}</td><td class="n">${isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—'}</td><td class="n">${pct(m.mddPct)}</td><td class="n">${isFinite(m.pf)?m.pf.toFixed(2):'—'}</td>
+    <td class="n">${pct(m.ruleFollow)}</td><td class="n">${m.high}</td><td>${resultPill(sc.done?sc.result:'Testing')}</td></tr>`).join('')}</table>
+  <div class="muted" style="font-size:12px;margin-top:10px">Click any trader → opens his full report card and red flag history.</div></div>`;
+};
+
+V.scorecard = () => {
+  const P=S.settings.pass, dis=canEdit()?'':'disabled';
+  return header('30-day scorecard','Small money first. Big money only after proof. Pass, watch or fail — decided by numbers.') +
+  `<div class="grid c21"><div class="card" style="min-width:0"><h3>Result per trader</h3><div class="tbl-wrap"><table><tr><th>Trader</th><th>Test day</th>${['Rule-follow','High flags','Max DD','Accuracy','RR','PF'].map(h=>`<th>${h}</th>`).join('')}<th>Misses</th><th>Result</th><th></th></tr>
+    ${S.traders.map(t=>{ const sc=scorecard(t); return `<tr><td><b>${esc(t.name)}</b><div>${statusPill(t.status)}</div></td><td class="mono">${sc.day}/${sc.total}</td>
+      ${sc.checks.map(c=>`<td title="${c.must}" class="${c.ok?'pos':'neg'}" style="font-size:12.5px">${c.ok?'✓':'✗'} <span class="mono">${String(c.val).split(' (')[0]}</span></td>`).join('')}
+      <td class="n">${sc.miss}</td><td>${resultPill(sc.result)}${sc.done?'':'<div class="muted" style="font-size:11px">provisional</div>'}</td>
+      <td>${canEdit()?`<button class="btn sm" onclick="applyResult('${t.id}')" ${sc.done?'':'title="Test not finished — apply anyway"'}>Apply</button>`:''}</td></tr>`; }).join('')}</table></div>
+    <div class="grid k3" style="margin-top:14px"><div class="note"><b class="pos">PASS — all checks met</b><br>Give big capital step by step: ${esc(S.settings.capitalSteps)}. Status → Live, tracking continues.</div>
+      <div class="note"><b class="amb">WATCH — 1 or 2 misses</b><br>Extend the test by ${S.settings.extendDays} days, same capital.</div><div class="note"><b class="neg">FAIL — 3+ misses</b><br>No big capital. Stop or retrain.</div></div></div>
+   <div class="card"><h3>Pass rules <small>team decides</small></h3>
+     <div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <label class="f">Rule-follow ≥ %<input id="p_ruleFollow" type="number" value="${P.ruleFollow}" ${dis}></label><label class="f">High red flags ≤<input id="p_highFlags" type="number" value="${P.highFlags}" ${dis}></label>
+      <label class="f">Max drawdown ≤ % capital<input id="p_maxDDpct" type="number" value="${P.maxDDpct}" ${dis}></label><label class="f">Accuracy ≥ %<input id="p_accuracy" type="number" value="${P.accuracy}" ${dis}></label>
+      <label class="f">Risk : Reward ≥ 1 :<input id="p_rr" type="number" step="0.1" value="${P.rr}" ${dis}></label><label class="f">Profit factor ≥<input id="p_pf" type="number" step="0.1" value="${P.pf}" ${dis}></label>
+      <label class="f">Test length (trading days)<input id="s_testDays" type="number" value="${S.settings.testDays}" ${dis}></label><label class="f">Watch extension (days)<input id="s_extendDays" type="number" value="${S.settings.extendDays}" ${dis}></label>
+     </div><label class="f" style="margin-top:12px">Big capital steps<input id="s_capitalSteps" value="${esc(S.settings.capitalSteps)}" ${dis}></label>
+     ${canEdit()?`<button class="btn pri" style="margin-top:12px" onclick="savePass()">Save pass rules</button>`:''}</div></div>
+  <div class="card" style="margin-top:14px"><h3>The 30-day test</h3><div class="flow">
+    <div class="st"><span class="no">Day 0</span><b>Rules written, accounts linked</b></div><div class="st"><span class="no">Every day</span><b>Import trades, check rules</b><span>Raise flags, update numbers</span></div>
+    <div class="st"><span class="no">Every week</span><b>Team reviews red flags with the trader</b></div><div class="st"><span class="no">Capital</span><b>Fixed small test amount</b><span>per trader (profile)</span></div><div class="st"><span class="no">Day 31</span><b>Scorecard → pass, watch or fail</b></div></div></div>`;
+};
+
+V.groups = () => {
+  const g=S.groups.find(x=>x.id===SEL.group)||S.groups[0];
+  const R=SEL.gRange, from = R==='today'?TODAY : R==='week'?addDays(TODAY,-6) : R==='month'?TODAY.slice(0,8)+'01' : R==='custom'?SEL.from : '';
+  const to = R==='custom'?SEL.to:TODAY;
+  const rows=(g?.accounts||[]).map(aid=>{ const a=account(aid); const tr=S.trades.filter(t=>t.account===aid&&(!from||t.date>=from)&&t.date<=to); return {a, n:tr.length, pnl:tr.reduce((s,t)=>s+tradePnl(t),0), ch:tr.reduce((s,t)=>s+t.charges,0)}; });
+  const tot=rows.reduce((s,r)=>s+r.pnl,0), mx=Math.max(1,...rows.map(r=>Math.abs(r.pnl)));
+  return header('Account groups','Select a group, see every account\'s P&L and the total. One account can be in many groups (by RA, dealer, trader, client).',
+    `<select id="gSel">${S.groups.map(x=>`<option value="${x.id}" ${x.id===g?.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select>${canEdit()?`<button class="btn" onclick="editGroup('${g?.id||''}')">Edit group</button><button class="btn pri" onclick="editGroup()">+ New group</button>`:''}`) +
+  `<div class="card" style="margin-bottom:14px"><div class="row"><div class="tabs">${[['today','Today'],['week','Week'],['month','Month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${R===k?'on':''}" onclick="SEL.gRange='${k}';render()">${l}</button>`).join('')}</div>
+    ${R==='custom'?`<input type="date" id="gFrom" value="${SEL.from}"><input type="date" id="gTo" value="${SEL.to}"><button class="btn sm" onclick="SEL.from=$('#gFrom').value;SEL.to=$('#gTo').value;render()">Go</button>`:''}
+    <div style="flex:1"></div><button class="btn sm" onclick="exportCSV('group')">Export CSV</button></div></div>
+  ${g?`<div class="grid c21"><div class="card"><h3>${esc(g.name)} · P&L by account</h3>
+    ${rows.map(r=>`<div class="row" style="margin:10px 0"><div style="width:170px">${esc(r.a?.name||'?')} <span class="muted">· ${esc(trader(r.a?.trader)?.name||'')}</span></div>
+      <div style="flex:1"><div class="bar" style="height:14px"><i style="width:${Math.abs(r.pnl)/mx*100}%;background:${r.pnl>=0?'var(--green)':'var(--red)'}"></i></div></div>
+      <div class="mono ${cls(r.pnl)}" style="width:130px;text-align:right">${inrS(r.pnl)}${r.pnl<0?' <span class="muted">(loss)</span>':''}</div></div>`).join('')}
+    <div class="row" style="border-top:1px solid var(--line);padding-top:12px;margin-top:8px"><b style="width:170px">Group total</b><div style="flex:1"></div><b class="mono ${cls(tot)}" style="font-size:18px">${inrS(tot)}</b></div></div>
+    <div class="card"><h3>Accounts in this group</h3><table><tr><th>Account</th><th>Broker</th><th class="n">Trades</th><th class="n">Charges</th></tr>${rows.map(r=>`<tr><td>${esc(r.a?.name)} · ${esc(trader(r.a?.trader)?.name||'')}</td><td>${esc(r.a?.broker)}</td><td class="n">${r.n}</td><td class="n">${inr(r.ch)}</td></tr>`).join('')}</table></div></div>`:'<div class="card">No groups yet.</div>'}`;
+};
+
+V.settings = () => {
+  const s=S.settings, dis=canEdit()?'':'disabled', P=STATUS.poll||{};
+  const conn = LIVE ? `<div class="card"><h3>Zebu connection <span class="pill ${STATUS.zebu_configured?'p-live':'p-stop'}">${STATUS.zebu_configured?'API keys set':'API keys missing'}</span></h3>
+    <table class="checklist"><tr><td class="muted">Last sync</td><td class="mono">${esc(P.last||'never')} ${P.reason?'· '+esc(P.reason):''}</td></tr>
+      <tr><td class="muted">Auto sync</td><td class="mono">every ${STATUS.poll_seconds||'—'}s · ${esc(STATUS.market||'')}</td></tr>
+      <tr><td class="muted">Redirect URL for Zebu app</td><td class="mono" style="white-space:normal;word-break:break-all">${esc(STATUS.redirect_url||'')}</td></tr></table>
+    <h3 style="margin-top:14px">Accounts</h3><table><tr><th>Account</th><th>Zebu UID</th><th>Link</th><th>Last result</th></tr>
+      ${S.accounts.filter(a=>a.broker==='Zebu').map(a=>`<tr><td>${esc(a.name)}</td><td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td><td class="muted" style="white-space:normal;font-size:12px">${esc((P.results||{})[a.id]||'—')}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">No Zebu accounts yet — add them in Trader profiles → Broker accounts.</td></tr>'}</table>
+    ${canEdit()?`<div class="row" style="margin-top:12px"><button class="btn pri" onclick="syncNow(this)">Sync from Zebu now</button><button class="btn" onclick="testAlert()">Send test alert</button></div>`:''}
+    <div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px"><label class="f">Default lot size (used for CSV import)<input id="s_lotSize" type="number" value="${s.lotSize}" ${dis}></label><label class="f">Strike step (Bank Nifty)<input id="s_strikeStep" type="number" value="${s.strikeStep}" ${dis}></label></div>
+    <div class="muted" style="font-size:12px;margin-top:8px">Lot size for Zebu trades comes from the trade book itself. Charges are an estimate (set the rates in the server .env).</div></div>`
+  : `<div class="card"><h3>Data source <span class="pill p-watch">Demo data</span></h3>
+    <div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr))"><label class="f">Lot size (Bank Nifty)<input id="s_lotSize" type="number" value="${s.lotSize}" ${dis}></label><label class="f">Strike step<input id="s_strikeStep" type="number" value="${s.strikeStep}" ${dis}></label></div>
+    ${canEdit()?`<div class="row" style="margin-top:12px"><button class="btn danger" onclick="resetDemo()">Reset demo data</button></div>`:''}
+    <div class="note" style="margin-top:12px">This copy runs on sample data. To go live with Zebu, run the server package on your own machine — the dashboard detects it and switches to <b>Live · Zebu</b> automatically, with real logins.</div></div>`;
+  const users = LIVE && ROLE==='admin' ? `<div class="card" style="margin-top:14px"><h3>Users</h3><table><tr><th>User</th><th>Role</th></tr>${USERS.map(u=>`<tr><td>${esc(u.user)}</td><td>${u.role}</td></tr>`).join('')}</table>
+    <div class="form" style="margin-top:10px"><label class="f">User<input id="u_name"></label><label class="f">Password<input id="u_pw" type="password"></label><label class="f">Role<select id="u_role"><option value="viewer">viewer</option><option value="admin">admin</option></select></label></div>
+    <button class="btn" style="margin-top:10px" onclick="saveUser()">Add / update user</button></div>` : '';
+  return header('Settings', LIVE?'Live data from Zebu (read-only)':'Demo mode') +
+  `<div class="grid k2"><div>${conn}${users}</div>
+   <div class="card"><h3>Red flag alerts</h3>
+    <div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <label class="f">Telegram chat ID<input id="a_telegram" value="${esc(s.alerts.telegram)}" ${dis}></label><label class="f">WhatsApp number<input id="a_whatsapp" value="${esc(s.alerts.whatsapp)}" ${dis}></label>
+      <label class="f">Email<input id="a_email" value="${esc(s.alerts.email)}" ${dis}></label><label class="f">Daily summary at<input id="a_summaryTime" type="time" value="${s.alerts.summaryTime}" ${dis}></label>
+      <label class="f">Alert on High flags<select id="a_onHigh" ${dis}><option value="true" ${s.alerts.onHigh?'selected':''}>Yes</option><option value="false" ${!s.alerts.onHigh?'selected':''}>No</option></select></label>
+      <label class="f">Daily summary at market close<select id="a_dailySummary" ${dis}><option value="true" ${s.alerts.dailySummary?'selected':''}>Yes</option><option value="false" ${!s.alerts.dailySummary?'selected':''}>No</option></select></label>
+    </div>${canEdit()?`<button class="btn pri" style="margin-top:12px" onclick="saveSettings()">Save settings</button>`:''}
+    <div class="muted" style="font-size:12px;margin-top:8px">${LIVE?'The server sends these. Telegram bot token, SMTP and WhatsApp provider are set in the server .env.':'Alerts are sent by the server in live mode.'}</div></div></div>`+
+  (LIVE?'':`<div class="card" style="margin-top:14px"><h3>API endpoints to implement <small>read-only for broker data — no order endpoints exist</small></h3>
+  <pre class="code">GET  /traders                 → [{id,name,ra,style:"Manual|Algo",holding:"Intraday|Carry forward",segment,testCapital,status:"Testing|Live|Watch|Stopped",start:"YYYY-MM-DD",extended?}]
+PUT  /traders/:id             ← trader object
+GET  /accounts                → [{id,name,broker,trader}]
+GET  /rules                   → {"TR-001":{instrument,expiry,strikeMode:"ITM|ATM|OTM|ANY",strikeDist,side,product:"MIS|ANY",timeFrom,timeTo,
+                                 maxTradesDay,maxLots,slPerLot,dailyLoss,hedge,source:"ANY|Manual|Algo"}, ...}
+PUT  /rules/:traderId         ← {rules, change, by}     (server keeps the audit log)
+GET  /trades?from=YYYY-MM-DD  → [{id,date,time,trader,account,symbol,strike,opt:"CE|PE",expiry,expiryType,side:"BUY|SELL",lots,lotSize,
+                                 entry,exit,exitDate,exitTime,spot,product:"MIS|NRML",source:"Manual|Algo",charges,hedged}]
+POST /trades/import           ← [trade rows]            (from CSV upload)
+GET  /groups  · PUT /groups/:id → [{id,name,accounts:[accountId]}]
+
+Broker side (your backend, read-only): Angel One SmartAPI tradeBook, Zerodha Kite /trades, Dhan /trades, Fyers /tradebook, Upstox /order/trades
+→ map each fill to the trade row above, attach spot at entry time, tag source (manual/algo) by order tag.</pre>
+  <div class="muted" style="font-size:12px">The server package implements all of these for Zebu.</div></div>`);
+};
+
+// ---------- actions ----------
+function go(v){ if(!V[v]) v='overview'; VIEW=v; closeModal(); try{ if(location.hash.slice(1)!==v) history.replaceState(null,'','#'+v); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
+function openReport(id){ SEL.trader=id; SEL.range='test'; go('report'); }
+function openRules(id){ SEL.trader=id; go('rules'); }
+function modal(html){ $('#modal').innerHTML=html; $('#mbg').classList.add('on'); }
+function closeModal(){ $('#mbg').classList.remove('on'); }
+$('#mbg').addEventListener('click',e=>{ if(e.target.id==='mbg') closeModal(); });
+function val(id){ const e=document.getElementById(id); return e? e.value : undefined; }
+
+function openTrade(id){
+  const t=S.trades.find(x=>x.id===id); if(!t) return; const f=chk().byTrade[id]||[], r=S.rules[t.trader]||DEFAULT_RULES, m=moneyness(t,S.settings.strikeStep);
+  modal(`<h2>Trade ${t.id} · ${esc(trader(t.trader)?.name)} ${f.length?'<span class="pill p-high">🚩 '+f.length+' red flag(s)</span>':'<span class="pill p-pass">All rules followed</span>'}</h2>
+  <div class="grid k4">${kpi('Instrument',t.symbol+' '+t.strike+' '+t.opt,mLabel(m.d)+' · spot '+(t.spot?Math.round(t.spot):'n/a'))}${kpi('Entry → exit',t.entry+' → '+(t.open?'OPEN @ '+t.exit:t.exit),t.date+' '+t.time+' → '+t.exitDate+' '+t.exitTime)}${kpi('Lots',t.lots+' × '+t.lotSize,t.side+' · '+t.product+' · '+t.source)}${kpi(t.open?'Open P&L (LTP)':'Net P&L',inr(tradePnl(t)),'charges '+(t.chargesEstimated?'≈ ':'')+inr(t.charges)+(t.tsym?' · '+esc(t.tsym):''),cls(tradePnl(t)))}</div>
+  <div class="card" style="margin-top:14px"><h3>Rule check</h3>${f.length? f.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #1c2640">${levelPill(x.level)} <b>${esc(x.rule)}</b> — ${esc(x.did)}</div>`).join('') : '<span class="pos">✓ Every rule in his rule book was followed.</span>'}
+   <div class="muted" style="font-size:12px;margin-top:8px">Expected strike by his rule: <b>${expectedStrike(t,r,S.settings.strikeStep)} ${t.opt}</b> (${r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode})</div></div>
+  <div class="row" style="margin-top:14px;justify-content:flex-end">${canEdit()&&!(LIVE&&t.origin==='zebu')?`<button class="btn danger" onclick="delTrade('${t.id}')">Delete</button><button class="btn" onclick="editTrade('${t.id}')">Edit</button>`:''}${LIVE&&t.origin==='zebu'?'<span class="muted" style="font-size:12px;margin-right:auto">From Zebu trade book · charges estimated</span>':''}<button class="btn pri" onclick="closeModal()">Close</button></div>`);
+}
+function delTrade(id){ const t=S.trades.find(x=>x.id===id); if(LIVE&&t?.origin==='zebu'){ toast('Zebu trades come from the broker and cannot be deleted'); return; } S.trades=S.trades.filter(t=>t.id!==id); save(); liveCall(()=>API.deleteTrade(id)); closeModal(); render(); toast('Trade deleted'); }
+
+function editTrader(id){
+  const t=id?trader(id):{id:'TR-'+String(S.traders.length+1).padStart(3,'0'),name:'',ra:'',style:'Manual',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:TODAY};
+  const o=(k,arr)=>`<select id="e_${k}">${arr.map(x=>`<option ${t[k]===x?'selected':''}>${x}</option>`).join('')}</select>`;
+  modal(`<h2>${id?'Edit':'Add'} trader</h2><div class="form">
+   <label class="f">Trader ID<input id="e_id" value="${esc(t.id)}" ${id?'disabled':''}></label><label class="f">Name<input id="e_name" value="${esc(t.name)}"></label><label class="f">RA / dealer<input id="e_ra" value="${esc(t.ra)}"></label>
+   <label class="f">Trading style${o('style',['Manual','Algo'])}</label><label class="f">Holding style${o('holding',['Intraday','Carry forward'])}</label><label class="f">Segment<input id="e_segment" value="${esc(t.segment)}"></label>
+   <label class="f">Test capital (₹)<input id="e_testCapital" type="number" value="${t.testCapital}"></label><label class="f">Status${o('status',['Testing','Live','Watch','Stopped'])}</label><label class="f">Test start date<input id="e_start" type="date" value="${t.start}"></label></div>
+   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveTrader(${id?`'${id}'`:'null'})">Save</button></div>`);
+}
+function saveTrader(id){
+  const t={ id: id||val('e_id').trim(), name:val('e_name').trim()||'Unnamed', ra:val('e_ra'), style:val('e_style'), holding:val('e_holding'), segment:val('e_segment'), testCapital:+val('e_testCapital')||0, status:val('e_status'), start:val('e_start')||TODAY };
+  if(!id && S.traders.some(x=>x.id===t.id)){ toast('ID already exists'); return; }
+  const old=id?trader(id):null; if(old) t.extended=old.extended;
+  if(old) Object.assign(old,t); else { S.traders.push(t); S.rules[t.id]={...DEFAULT_RULES}; S.ruleLog.push({trader:t.id,at:TODAY+' '+new Date().toTimeString().slice(0,5),by:USER,change:'Rule book created (defaults)'}); }
+  save(); liveCall(()=>API.saveTrader(t)); closeModal(); render(); toast('Trader saved');
+}
+function editAccount(id){
+  const a=id?account(id):{id:'AC-'+String(S.accounts.length+1).padStart(2,'0'),name:'Account '+(S.accounts.length+1),broker:LIVE?'Zebu':'Angel One',trader:S.traders[0]?.id,zebu_uid:'',zebu_actid:''};
+  modal(`<h2>${id?'Edit':'Add'} account</h2><div class="form"><label class="f">Account ID<input id="a_id" value="${a.id}" ${id?'disabled':''}></label><label class="f">Name<input id="a_name" value="${esc(a.name)}"></label>
+   <label class="f">Broker<select id="a_broker">${['Zebu','Angel One','Zerodha','Dhan','Fyers','Upstox','Other'].map(b=>`<option ${a.broker===b?'selected':''}>${b}</option>`).join('')}</select></label><label class="f">Trader${traderSelect('a_trader',a.trader)}</label>
+   <label class="f">Zebu client ID (uid)<input id="a_zuid" value="${esc(a.zebu_uid||'')}" placeholder="e.g. ZP12345"></label><label class="f">Zebu account ID (actid)<input id="a_zact" value="${esc(a.zebu_actid||'')}" placeholder="usually same as uid"></label></div>
+   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveAccount(${id?`'${id}'`:'null'})">Save</button></div>`);
+}
+function saveAccount(id){ const a={id:id||val('a_id'),name:val('a_name'),broker:val('a_broker'),trader:val('a_trader'),zebu_uid:(val('a_zuid')||'').trim().toUpperCase(),zebu_actid:(val('a_zact')||'').trim().toUpperCase()}; const o=id?account(id):null; if(o) Object.assign(o,a); else S.accounts.push(a); save(); liveCall(()=>API.saveAccount(a)); closeModal(); render(); toast('Account saved'); }
+function linkPill(a){
+  const l=a.link||'Not linked';
+  const ws = a.ws_status ? `<span class="pill ${a.ws_status==='REAL-TIME'?'p-live':a.ws_status==='DEGRADED'?'p-watch':'p-stop'}" style="margin-left:4px;font-size:10px">${esc(a.ws_status)}</span>` : '';
+  return `<span class="pill ${l==='Linked'?'p-live':l==='Login expired'?'p-stop':'p-watch'}">${l}</span>${ws}${a.cliname?`<div class="muted" style="font-size:11px">${esc(a.cliname)}</div>`:''}`;
+}
+async function linkZebu(id){
+  const a=account(id); if(!a.zebu_uid){ toast('Enter the Zebu client ID first (Edit)'); editAccount(id); return; }
+  try{ const r=await API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST'});
+    modal(`<h2>Link ${esc(a.name)} to Zebu</h2><p>Open the Zebu login, sign in as <b class="mono">${esc(a.zebu_uid)}</b>. You'll come back to a "linked" page and trades start syncing.</p>
+      <p><a class="btn pri" style="text-decoration:none;display:inline-block" href="${esc(r.url)}" target="_blank" rel="noopener">Open Zebu login →</a></p>
+      <p class="muted" style="font-size:12px">The link works for 15 minutes. Zebu sessions expire — when one does, the account shows "Login expired" and an alert is sent; link it again the same way.</p>
+      <div class="row" style="justify-content:flex-end"><button class="btn" onclick="closeModal();refreshLive()">Done</button></div>`);
+  }catch(e){ toast('Link failed: '+e.message); }
+}
+async function refreshLive(){ if(!LIVE) return; try{ await API.syncAll(); render(); }catch(e){ toast(e.message); } }
+
+function saveRules(){
+  const id=SEL.trader, old=S.rules[id]||{}, r={};
+  Object.keys(DEFAULT_RULES).forEach(k=>{ let v=val('r_'+k); if(['strikeDist','maxTradesDay','maxLots','slPerLot','dailyLoss'].includes(k)) v=+v; if(k==='hedge') v=v==='true'; r[k]=v; });
+  const ch=Object.keys(r).filter(k=>String(r[k])!==String(old[k])).map(k=>`${k}: ${old[k]} → ${r[k]}`);
+  if(!ch.length){ toast('No changes'); return; }
+  S.rules[id]=r; const change=ch.join(' · '); S.ruleLog.push({trader:id,at:TODAY+' '+new Date().toTimeString().slice(0,5),by:USER,change});
+  save(); liveCall(()=>API.saveRules(id,r,change)); render(); toast('Rules saved — trades re-checked');
+}
+function editTrade(id){
+  closeModal();
+  const t=id?S.trades.find(x=>x.id===id):{id:uid('T'),date:TODAY,time:'10:00',trader:S.traders[0].id,account:S.accounts[0].id,symbol:'BANKNIFTY',strike:51700,opt:'CE',expiryType:'Monthly',expiry:'',side:'BUY',lots:1,lotSize:S.settings.lotSize,entry:300,exit:320,exitDate:TODAY,exitTime:'10:30',spot:51800,product:'MIS',source:'Manual',charges:60,hedged:false};
+  const f=(k,type='text',lab=k)=>`<label class="f">${lab}<input id="t_${k}" type="${type}" value="${esc(t[k])}" ${type==='number'?'step="any"':''}></label>`;
+  const s=(k,arr,lab=k)=>`<label class="f">${lab}<select id="t_${k}">${arr.map(x=>`<option ${String(t[k])===String(x)?'selected':''}>${x}</option>`).join('')}</select></label>`;
+  setTimeout(()=>modal(`<h2>${id?'Edit':'Add'} trade</h2><div class="form">${f('date','date','Date')}${f('time','time','Entry time')}<label class="f">Trader${traderSelect('t_trader',t.trader)}</label>
+   <label class="f">Account<select id="t_account">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===t.account?'selected':''}>${esc(a.name)} · ${a.broker}</option>`).join('')}</select></label>
+   ${f('symbol','text','Symbol')}${f('strike','number','Strike')}${s('opt',['CE','PE'],'CE / PE')}${s('expiryType',['Weekly','Monthly'],'Expiry')}${s('side',['BUY','SELL'],'Buy / sell')}
+   ${f('lots','number','Lots')}${f('lotSize','number','Lot size')}${f('spot','number','Spot at entry')}${f('entry','number','Entry price')}${f('exit','number','Exit price')}${f('exitDate','date','Exit date')}${f('exitTime','time','Exit time')}
+   ${s('product',['MIS','NRML'],'Product')}${s('source',['Manual','Algo'],'Source')}${f('charges','number','Charges (₹)')}${s('hedged',['false','true'],'Hedged')}</div>
+   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveTrade('${t.id}',${id?'true':'false'})">Save & check</button></div>`),10);
+}
+function saveTrade(id, exists){
+  const n=k=>+val('t_'+k);
+  const t={id,date:val('t_date'),time:val('t_time'),trader:val('t_trader'),account:val('t_account'),symbol:val('t_symbol').toUpperCase(),strike:n('strike'),opt:val('t_opt'),expiryType:val('t_expiryType'),expiry:'',side:val('t_side'),lots:n('lots'),lotSize:n('lotSize'),
+    spot:n('spot'),entry:n('entry'),exit:n('exit'),exitDate:val('t_exitDate'),exitTime:val('t_exitTime'),product:val('t_product'),source:val('t_source'),charges:n('charges'),hedged:val('t_hedged')==='true'};
+  if(exists){ Object.assign(S.trades.find(x=>x.id===id),t); } else S.trades.push(t);
+  save(); liveCall(()=>API.importTrades([t])); closeModal(); render(); setTimeout(()=>openTrade(id),50);
+}
+const CSV_COLS=['date','time','trader','account','symbol','strike','opt','expiryType','side','lots','lotSize','entry','exit','exitDate','exitTime','spot','product','source','charges','hedged'];
+function importModal(){
+  modal(`<h2>Import trade book (Excel → Save as CSV)</h2>
+   <p class="muted">Columns (header row, any order): <span class="mono" style="font-size:12px">${CSV_COLS.join(', ')}</span>. Dates as YYYY-MM-DD, times HH:MM. <b>trader</b> = trader ID (e.g. TR-001), <b>account</b> = account ID.</p>
+   <div class="row"><input type="file" id="csvFile" accept=".csv,text/csv"><button class="btn sm" onclick="copyTemplate()">Copy template</button></div>
+   <textarea id="csvText" rows="8" style="width:100%;margin-top:10px;font-family:var(--mono);font-size:12px" placeholder="…or paste CSV here"></textarea>
+   <div id="csvPrev" class="muted" style="margin-top:8px"></div>
+   <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="doImport()">Import & check rules</button></div>`);
+  $('#csvFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('#csvText').value=r.result; $('#csvPrev').textContent=(r.result.trim().split(/\r?\n/).length-1)+' rows loaded'; }; r.readAsText(f); });
+}
+function copyTemplate(){ const s=CSV_COLS.join(',')+'\n2026-11-13,10:42,TR-001,AC-01,BANKNIFTY,52000,CE,Weekly,BUY,1,30,310,295,2026-11-13,11:05,51800,MIS,Manual,62,false'; navigator.clipboard.writeText(s).then(()=>toast('Template copied'),()=>{ $('#csvText').value=s; }); }
+function parseCSV(text){
+  const lines=text.trim().split(/\r?\n/).filter(Boolean); if(lines.length<2) return [];
+  const split=l=>{ const out=[]; let cur='',q=false; for(const c of l){ if(c==='"') q=!q; else if(c===','&&!q){ out.push(cur); cur=''; } else cur+=c; } out.push(cur); return out.map(x=>x.trim()); };
+  const h=split(lines[0]).map(x=>x.replace(/\s+/g,''));
+  return lines.slice(1).map(l=>{ const v=split(l), o={}; h.forEach((k,i)=>o[k]=v[i]); return o; });
+}
+function doImport(){
+  const rows=parseCSV(val('csvText')||''); if(!rows.length){ toast('Nothing to import'); return; }
+  const num=['strike','lots','lotSize','entry','exit','spot','charges'];
+  const out=rows.map(r=>{ const t={id:uid('T'),symbol:'BANKNIFTY',expiryType:'',side:'BUY',lotSize:S.settings.lotSize,product:'MIS',source:'Manual',charges:0,hedged:false,...r};
+    num.forEach(k=>t[k]=+t[k]||0); t.hedged=String(t.hedged).toLowerCase()==='true'; t.exitDate=t.exitDate||t.date; t.opt=(t.opt||'CE').toUpperCase(); t.side=t.side.toUpperCase(); t.product=t.product.toUpperCase(); return t; })
+    .filter(t=>t.date&&t.time&&t.trader);
+  out.forEach(t=>t.origin='import'); S.trades.push(...out); save(); liveCall(()=>API.importTrades(out)); closeModal(); render();
+  const nf=out.filter(t=>chk().byTrade[t.id]?.length).length; toast(`Imported ${out.length} trades · ${nf} with red flags`);
+}
+function applyTF(){ SEL.tradeFilter={trader:val('tfTr'),flag:val('tfFlag'),from:val('tfFrom'),to:val('tfTo')}; render(); }
+function savePass(){ const P=S.settings.pass; Object.keys(P).forEach(k=>P[k]=+val('p_'+k)); S.settings.testDays=+val('s_testDays'); S.settings.extendDays=+val('s_extendDays'); S.settings.capitalSteps=val('s_capitalSteps'); save(); liveCall(()=>API.req('/settings',{method:'PUT',body:JSON.stringify(S.settings)})); render(); toast('Pass rules saved'); }
+function applyResult(id){
+  const t=trader(id), sc=scorecard(t);
+  modal(`<h2>Apply result for ${esc(t.name)}: ${resultPill(sc.result)}</h2><p>${sc.miss} check(s) missed. ${sc.done?'':'<b class="amb">Test is not finished yet (day '+sc.day+' of '+sc.total+').</b>'}</p>
+   <p>${sc.result==='Pass'?'Status → <b>Live</b>. Give big capital step by step: '+esc(S.settings.capitalSteps)+'. Same rules and red flags keep running.':sc.result==='Watch'?'Status → <b>On watch</b>. Test extended by '+S.settings.extendDays+' trading days, same capital.':'Status → <b>Stopped</b>. No big capital. Stop or retrain.'}</p>
+   <div class="row" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="confirmResult('${id}','${sc.result}')">Confirm</button></div>`);
+}
+function confirmResult(id,r){ const t=trader(id); if(r==='Pass') t.status='Live'; else if(r==='Watch'){ t.status='Watch'; t.extended=true; } else t.status='Stopped'; save(); liveCall(()=>API.saveTrader(t)); closeModal(); render(); toast(t.name+' → '+t.status); }
+function editGroup(id){
+  const g=id?S.groups.find(x=>x.id===id):{id:uid('G-'),name:'',accounts:[]};
+  modal(`<h2>${id?'Edit':'New'} group</h2><label class="f">Group name (RA, dealer, trader, client…)<input id="g_name" value="${esc(g.name)}"></label>
+   <div style="margin-top:12px">${S.accounts.map(a=>`<label style="display:flex;gap:8px;padding:5px 0"><input type="checkbox" class="g_acc" value="${a.id}" ${g.accounts.includes(a.id)?'checked':''}> ${esc(a.name)} · ${esc(trader(a.trader)?.name||'')} · <span class="muted">${a.broker}</span></label>`).join('')}</div>
+   <div class="row" style="margin-top:16px;justify-content:flex-end">${id?`<button class="btn danger" onclick="delGroup('${id}')">Delete</button>`:''}<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveGroup('${g.id}',${id?'true':'false'})">Save</button></div>`);
+}
+function saveGroup(id,exists){ const g={id,name:val('g_name')||'Group',accounts:[...document.querySelectorAll('.g_acc:checked')].map(x=>x.value)}; if(exists) Object.assign(S.groups.find(x=>x.id===id),g); else S.groups.push(g); SEL.group=id; save(); liveCall(()=>API.saveGroup(g)); closeModal(); render(); }
+function delGroup(id){ S.groups=S.groups.filter(g=>g.id!==id); SEL.group=S.groups[0]?.id; save(); liveCall(()=>API.deleteGroup(id)); closeModal(); render(); }
+function saveSettings(){ const s=S.settings; const n=k=>{ const v=val('s_'+k); if(v!==undefined) s[k]=+v; }; n('lotSize'); n('strikeStep');
+  ['telegram','whatsapp','email','summaryTime'].forEach(k=>s.alerts[k]=val('a_'+k)); s.alerts.onHigh=val('a_onHigh')==='true'; s.alerts.dailySummary=val('a_dailySummary')==='true';
+  save(); liveCall(()=>API.req('/settings',{method:'PUT',body:JSON.stringify(s)})); render(); toast('Settings saved'); }
+async function syncNow(btn){ if(btn){ btn.disabled=true; btn.textContent='Syncing…'; } try{ await API.req('/sync',{method:'POST'}); await API.syncAll(); toast('Synced from Zebu'); }catch(e){ toast('Sync failed: '+e.message); } render(); }
+async function testAlert(){ try{ const r=await API.req('/alerts/test',{method:'POST'}); toast(r.sent.length?'Sent via '+r.sent.join(', '):'Nothing sent — set alert contacts and server .env'); }catch(e){ toast(e.message); } }
+async function saveUser(){ const u=val('u_name').trim(); if(!u) return; try{ await API.req('/users/'+encodeURIComponent(u),{method:'PUT',body:JSON.stringify({password:val('u_pw'),role:val('u_role')})}); await API.syncAll(); render(); toast('User saved'); }catch(e){ toast(e.message); } }
+function resetDemo(){ if(LIVE) return; modal(`<h2>Reset demo data?</h2><p>All changes in this browser will be replaced with fresh sample data.</p><div class="row" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn danger" onclick="S=buildDemo();save();closeModal();render();toast('Demo data reset')">Reset</button></div>`); }
+
+// ---------- export ----------
+function toCSV(rows){ return rows.map(r=>r.map(x=>{ const s=String(x??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\n'); }
+async function exportCSV(kind){
+  const {byTrade,flags}=chk(); let rows, name;
+  if(kind==='trades'){ name='trade_log.csv'; rows=[[...CSV_COLS,'netPnl','flags'],...S.trades.map(t=>[...CSV_COLS.map(k=>t[k]),tradePnl(t).toFixed(2),(byTrade[t.id]||[]).map(f=>f.rule).join(' | ')])]; }
+  else if(kind==='flags'){ name='red_flags.csv'; rows=[['date','time','trader','rule','what he did','level'],...flags.map(f=>[f.trade.date,f.trade.time,trader(f.trade.trader)?.name,f.rule,f.did,f.level])]; }
+  else if(kind==='compare'||kind==='report'){ name=kind==='report'?'report_'+SEL.trader+'.csv':'compare_traders.csv'; const list=kind==='report'?[trader(SEL.trader)]:S.traders;
+    rows=[['trader','status','test day','pnl','accuracy','rr','max dd','max dd %','profit factor','rule-follow','high flags','trades/day','intraday %','manual %','result'],...list.map(t=>{ const sc=scorecard(t),m=sc.m; return [t.name,t.status,sc.day,m.total.toFixed(0),m.accuracy.toFixed(1),(m.rr||0).toFixed(2),m.mdd.toFixed(0),m.mddPct.toFixed(1),(m.pf||0).toFixed(2),m.ruleFollow.toFixed(1),m.high,m.tpd.toFixed(1),m.intraday.toFixed(0),m.manual.toFixed(0),sc.result]; })]; }
+  else { const g=S.groups.find(x=>x.id===SEL.group); name='group_'+(g?.name||'').replace(/\W+/g,'_')+'.csv'; rows=[['account','trader','broker','net pnl'],...(g?.accounts||[]).map(a=>{ const ac=account(a); return [ac?.name,trader(ac?.trader)?.name,ac?.broker,S.trades.filter(t=>t.account===a).reduce((s,t)=>s+tradePnl(t),0).toFixed(0)]; })]; }
+  const csv=toCSV(rows);
+  try{ const dl = window.claude ? await window.claude.use('downloads') : null;
+    if(dl){ await dl.save({filename:name,data:csv}); return; } }catch(e){ }
+  try{ const b=new Blob([csv],{type:'text/csv'}), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }catch(e){}
+  try{ await navigator.clipboard.writeText(csv); toast('CSV also copied to clipboard'); }catch(e){}
+}
+
+// ---------- login & render ----------
+function loginView(){
+  return `<div class="login"><div class="card"><div class="brand"><div class="logo">TT</div><div><b>Trader Tracking System</b><small>Internal · tracking only</small></div></div>
+   <label class="f">User<input id="lu" value="${LIVE?'':'admin'}" autocomplete="username"></label>
+   ${LIVE?`<label class="f" style="margin-top:10px">Password<input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"></label>`
+     :`<label class="f" style="margin-top:10px">Role<select id="lr"><option value="admin">Admin — can edit</option><option value="viewer">Viewer — read only</option></select></label>`}
+   <button class="btn pri" style="width:100%;margin-top:16px" onclick="login()">Sign in</button><div id="lerr" class="neg" style="font-size:12.5px;margin-top:8px"></div>
+   <div class="muted" style="font-size:12px;margin-top:10px">${LIVE?'Live · Zebu data. Ask the admin for a login.':'Demo login with sample data. The live server uses real passwords.'}</div></div></div>`;
+}
+async function login(){
+  if(!LIVE){ USER=val('lu')||'admin'; ROLE=val('lr'); try{ sessionStorage.setItem('tts_user',JSON.stringify({USER,ROLE})); }catch(e){} render(); return; }
+  try{ const r=await API.req('/login',{method:'POST',body:JSON.stringify({user:val('lu'),password:val('lp')})});
+    TOKEN=r.token; USER=r.user; ROLE=r.role; try{ sessionStorage.setItem('tts_live',JSON.stringify({TOKEN,USER,ROLE})); }catch(e){}
+    await API.syncAll(); initDashboardWebSocket(); render();
+  }catch(e){ const el=$('#lerr'); if(el) el.textContent=e.message; }
+}
+function logout(){ try{ sessionStorage.removeItem('tts_user'); sessionStorage.removeItem('tts_live'); }catch(e){} USER=null; TOKEN=null; render(); }
+function render(){
+  if(!USER){ $('#root').innerHTML=loginView(); return; }
+  if(!V[VIEW]) VIEW='overview';
+  charts.forEach(c=>c.destroy()); charts=[];
+  $('#root').innerHTML = shell(V[VIEW]());
+  bind();
+}
+function bind(){
+  const on=(id,ev,fn)=>{ const e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
+  on('selTr','change',e=>{ SEL.trader=e.target.value; render(); });
+  on('ffTr','change',e=>{ SEL.flagFilter.trader=e.target.value; render(); });
+  on('ffLv','change',e=>{ SEL.flagFilter.level=e.target.value; render(); });
+  on('gSel','change',e=>{ SEL.group=e.target.value; render(); });
+  [['cSort','sort'],['cStatus','status'],['cStyle','style'],['cHold','hold']].forEach(([id,k])=>on(id,'change',e=>{ SEL.cmp[k]=e.target.value; render(); }));
+}
+window.addEventListener('hashchange', ()=>{ const h=location.hash.slice(1); if(V[h] && h!==VIEW){ VIEW=h; render(); } });
+try{ const h0=location.hash.slice(1); if(V[h0]) VIEW=h0; }catch(e){}
+let WS_CLIENT = null;
+function initDashboardWebSocket(){
+  if(!LIVE || !USER || WS_CLIENT) return;
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${proto}//${location.host}/api/ws`;
+    WS_CLIENT = new WebSocket(wsUrl);
+    WS_CLIENT.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if(msg.type === 'trades_updated'){
+          refreshLive();
+        }
+      } catch(e){}
+    };
+    WS_CLIENT.onclose = () => {
+      WS_CLIENT = null;
+      setTimeout(initDashboardWebSocket, 5000);
+    };
+    WS_CLIENT.onerror = () => {
+      if(WS_CLIENT) WS_CLIENT.close();
+    };
+  } catch(e){}
+}
+
+(async function init(){
+  $('#root').innerHTML='<div class="login"><div class="muted">Loading…</div></div>';
+  LIVE = await detectLive();
+  if(LIVE){
+    S={settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),traders:[],accounts:[],rules:{},ruleLog:[],trades:[],groups:[]}; USER=null;
+    try{ const u=JSON.parse(sessionStorage.getItem('tts_live')||'null'); if(u){ TOKEN=u.TOKEN; USER=u.USER; ROLE=u.ROLE; await API.syncAll(); initDashboardWebSocket(); } }catch(e){ USER=null; TOKEN=null; }
+    setInterval(()=>{ if(USER && !$('#mbg').classList.contains('on') && document.visibilityState!=='hidden' && !document.activeElement?.matches?.('input,select,textarea')) refreshLive(); }, 30000);
+  } else {
+    load();
+    try{ const u=JSON.parse(sessionStorage.getItem('tts_user')||'null'); if(u){ USER=u.USER; ROLE=u.ROLE; } else USER=null; }catch(e){ USER='admin'; }
+  }
+  render();
+})();
+</script>
+</body>
+</html>
