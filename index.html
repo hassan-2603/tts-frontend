@@ -722,17 +722,10 @@ function linkPill(a){
   const ws = a.ws_status ? `<span class="pill ${a.ws_status==='REAL-TIME'?'p-live':a.ws_status==='DEGRADED'?'p-watch':'p-stop'}" style="margin-left:4px;font-size:10px">${esc(a.ws_status)}</span>` : '';
   return `<span class="pill ${l==='Linked'?'p-live':l==='Login expired'?'p-stop':'p-watch'}">${l}</span>${ws}${a.cliname?`<div class="muted" style="font-size:11px">${esc(a.cliname)}</div>`:''}`;
 }
-async function linkZebu(id){
-  const a=account(id); if(!a.zebu_uid){ toast('Enter the Zebu client ID first (Edit)'); editAccount(id); return; }
-  try{
-    toast('Opening Zebu login in new tab...');
-    const r=await API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST', body:JSON.stringify({frontend_url: window.location.origin})});
-    const url = r.url || ('/auth/zebu/start?n=' + (r.nonce || ''));
-    const win = window.open(url, '_blank');
-    if(!win){
-      window.location.href = url;
-    }
-  }catch(e){ toast('Link failed: '+e.message); }
+function linkZebu(id){
+  const a=account(id); if(!a || !a.zebu_uid){ toast('Enter the Zebu client ID first (Edit)'); editAccount(id); return; }
+  toast('Connecting to Zebu login...');
+  window.location.href = '/auth/zebu/start?account=' + encodeURIComponent(id);
 }
 async function refreshLive(){ if(!LIVE) return; try{ await API.syncAll(); render(); }catch(e){ toast(e.message); } }
 
