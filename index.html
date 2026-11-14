@@ -725,10 +725,12 @@ function linkPill(a){
 async function linkZebu(id){
   const a=account(id); if(!a.zebu_uid){ toast('Enter the Zebu client ID first (Edit)'); editAccount(id); return; }
   try{
-    toast('Opening Zebu login...');
-    const r=await API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST'});
-    if(r && r.url){
-      window.location.href = r.url;
+    toast('Opening Zebu login in new tab...');
+    const r=await API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST', body:JSON.stringify({frontend_url: window.location.origin})});
+    const url = r.url || ('/auth/zebu/start?n=' + (r.nonce || ''));
+    const win = window.open(url, '_blank');
+    if(!win){
+      window.location.href = url;
     }
   }catch(e){ toast('Link failed: '+e.message); }
 }
