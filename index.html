@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   --bg:#0b1020; --panel:#121a2e; --panel2:#18223a; --line:#24304d; --text:#e6ebf5; --muted:#8a96b2;
@@ -778,30 +779,177 @@ function saveTrade(id, exists){
   save(); liveCall(()=>API.importTrades([t])); closeModal(); render(); setTimeout(()=>openTrade(id),50);
 }
 const CSV_COLS=['date','time','trader','account','symbol','strike','opt','expiryType','side','lots','lotSize','entry','exit','exitDate','exitTime','spot','product','source','charges','hedged'];
+
+const ALIASES = {
+  date: ['date','tradedate','entrydate','orderdate','dt','txndate','activitydate'],
+  time: ['time','tradetime','entrytime','ordertime','tm','txntime','activitytime'],
+  trader: ['trader','traderid','trader_id','tradername','name','user'],
+  account: ['account','accountid','account_id','acc','clientid','client_id','client','accountno'],
+  symbol: ['symbol','tradingsymbol','tsym','instrument','scrip','scripname','underlying'],
+  strike: ['strike','strikeprice','sp'],
+  opt: ['opt','option','optiontype','opttype','ce/pe','call/put','type'],
+  side: ['side','trantype','tran_type','action','transaction','buy/sell','b/s','buysell'],
+  lots: ['lots','lot','qty','quantity','tradeqty','filledqty'],
+  lotSize: ['lotsize','lot_size','ls'],
+  entry: ['entry','entryprice','buyprice','price','avgprice','rate','tradeprice'],
+  exit: ['exit','exitprice','sellprice','closeprice','exitrate'],
+  exitDate: ['exitdate','exit_date','selldate','closedate'],
+  exitTime: ['exittime','exit_time','selltime','closetime'],
+  spot: ['spot','spotprice','underlyingprice','indexprice','spotatentry'],
+  product: ['product','prd','producttype','ordertype'],
+  source: ['source','ordersource','src','style'],
+  charges: ['charges','brokerage','taxes','chg','totalcharges'],
+  hedged: ['hedged','hedge']
+};
+
 function importModal(){
-  modal(`<h2>Import trade book (Excel → Save as CSV)</h2>
-   <p class="muted">Columns (header row, any order): <span class="mono" style="font-size:12px">${CSV_COLS.join(', ')}</span>. Dates as YYYY-MM-DD, times HH:MM. <b>trader</b> = trader ID (e.g. TR-001), <b>account</b> = account ID.</p>
-   <div class="row"><input type="file" id="csvFile" accept=".csv,text/csv"><button class="btn sm" onclick="copyTemplate()">Copy template</button></div>
-   <textarea id="csvText" rows="8" style="width:100%;margin-top:10px;font-family:var(--mono);font-size:12px" placeholder="…or paste CSV here"></textarea>
+  modal(`<h2>Import Trade Book (Excel .xlsx / .xls / .csv)</h2>
+   <p class="muted">Upload an Excel (.xlsx / .xls) or CSV file, or paste CSV text below. Headers are detected automatically.</p>
+   <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+     <input type="file" id="csvFile" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+     <button class="btn sm" onclick="copyTemplate()">Copy template</button>
+   </div>
+   <textarea id="csvText" rows="8" style="width:100%;margin-top:10px;font-family:var(--mono);font-size:12px" placeholder="…or paste CSV text here"></textarea>
    <div id="csvPrev" class="muted" style="margin-top:8px"></div>
    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="doImport()">Import & check rules</button></div>`);
-  $('#csvFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('#csvText').value=r.result; $('#csvPrev').textContent=(r.result.trim().split(/\r?\n/).length-1)+' rows loaded'; }; r.readAsText(f); });
+
+  $('#csvFile').addEventListener('change', e=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    const isExcel = /\.(xlsx|xls)$/i.test(f.name);
+    if(isExcel && window.XLSX){
+      const r = new FileReader();
+      r.onload = ev => {
+        try {
+          const data = new Uint8Array(ev.target.result);
+          const wb = XLSX.read(data, {type:'array'});
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const csv = XLSX.utils.sheet_to_csv(sheet);
+          $('#csvText').value = csv;
+          const count = Math.max(0, csv.trim().split(/\r?\n/).filter(Boolean).length - 1);
+          $('#csvPrev').textContent = `Loaded ${count} rows from ${f.name}`;
+        } catch(err){
+          toast('Excel read error: ' + err.message);
+        }
+      };
+      r.readAsArrayBuffer(f);
+    } else {
+      const r = new FileReader();
+      r.onload = () => {
+        $('#csvText').value = r.result;
+        const count = Math.max(0, r.result.trim().split(/\r?\n/).filter(Boolean).length - 1);
+        $('#csvPrev').textContent = `Loaded ${count} rows from ${f.name}`;
+      };
+      r.readAsText(f);
+    }
+  });
 }
+
+function normalizeHeader(h){
+  const clean = String(h||'').toLowerCase().replace(/[^a-z0-9]/g, '');
+  for(const [canonical, aliases] of Object.entries(ALIASES)){
+    if(canonical.toLowerCase() === clean || aliases.includes(clean)) return canonical;
+  }
+  return clean;
+}
+
 function copyTemplate(){ const s=CSV_COLS.join(',')+'\n2026-11-13,10:42,TR-001,AC-01,BANKNIFTY,52000,CE,Weekly,BUY,1,30,310,295,2026-11-13,11:05,51800,MIS,Manual,62,false'; navigator.clipboard.writeText(s).then(()=>toast('Template copied'),()=>{ $('#csvText').value=s; }); }
+
 function parseCSV(text){
-  const lines=text.trim().split(/\r?\n/).filter(Boolean); if(lines.length<2) return [];
-  const split=l=>{ const out=[]; let cur='',q=false; for(const c of l){ if(c==='"') q=!q; else if(c===','&&!q){ out.push(cur); cur=''; } else cur+=c; } out.push(cur); return out.map(x=>x.trim()); };
-  const h=split(lines[0]).map(x=>x.replace(/\s+/g,''));
-  return lines.slice(1).map(l=>{ const v=split(l), o={}; h.forEach((k,i)=>o[k]=v[i]); return o; });
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  if(lines.length < 2) return [];
+  const split = l => {
+    const out = []; let cur = '', q = false;
+    for(const c of l){
+      if(c === '"') q = !q;
+      else if(c === ',' && !q){ out.push(cur); cur = ''; }
+      else cur += c;
+    }
+    out.push(cur);
+    return out.map(x => x.trim().replace(/^["']|["']$/g, ''));
+  };
+  const rawHeaders = split(lines[0]);
+  const headers = rawHeaders.map(normalizeHeader);
+  return lines.slice(1).map(l => {
+    const vals = split(l);
+    const obj = {};
+    headers.forEach((k, i) => { if(k) obj[k] = vals[i] ?? ''; });
+    return obj;
+  });
 }
+
 function doImport(){
-  const rows=parseCSV(val('csvText')||''); if(!rows.length){ toast('Nothing to import'); return; }
-  const num=['strike','lots','lotSize','entry','exit','spot','charges'];
-  const out=rows.map(r=>{ const t={id:uid('T'),symbol:'BANKNIFTY',expiryType:'',side:'BUY',lotSize:S.settings.lotSize,product:'MIS',source:'Manual',charges:0,hedged:false,...r};
-    num.forEach(k=>t[k]=+t[k]||0); t.hedged=String(t.hedged).toLowerCase()==='true'; t.exitDate=t.exitDate||t.date; t.opt=(t.opt||'CE').toUpperCase(); t.side=t.side.toUpperCase(); t.product=t.product.toUpperCase(); return t; })
-    .filter(t=>t.date&&t.time&&t.trader);
-  out.forEach(t=>t.origin='import'); S.trades.push(...out); save(); liveCall(()=>API.importTrades(out)); closeModal(); render();
-  const nf=out.filter(t=>chk().byTrade[t.id]?.length).length; toast(`Imported ${out.length} trades · ${nf} with red flags`);
+  const rows = parseCSV(val('csvText') || '');
+  if(!rows.length){ toast('Nothing to import: please select an Excel/CSV file or paste CSV text'); return; }
+  const defTrader = S.traders[0]?.id || 'TR-001';
+  const defAccount = S.accounts[0]?.id || 'AC-01';
+
+  const out = [];
+  for(const r of rows){
+    let d = (r.date || TODAY).trim();
+    let tm = (r.time || '10:00').trim();
+    if(d.includes(' ')){
+      const parts = d.split(' ');
+      d = parts[0];
+      if(!r.time && parts[1]) tm = parts[1].slice(0, 5);
+    }
+    if(/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(d)){
+      const dp = d.split(/[-\/]/);
+      d = `${dp[2]}-${dp[1].padStart(2,'0')}-${dp[0].padStart(2,'0')}`;
+    }
+
+    let sym = (r.symbol || 'BANKNIFTY').trim().toUpperCase();
+    let stk = +r.strike || 0;
+    let opt = (r.opt || 'CE').trim().toUpperCase();
+    if(!stk && sym){
+      const m = sym.match(/(\d{4,6})(CE|PE)/);
+      if(m){ stk = +m[1]; opt = m[2]; }
+    }
+
+    const lotSize = +r.lotSize || S.settings.lotSize || 30;
+    let lots = +r.lots || 0;
+    if(!lots && +r.qty){ lots = Math.max(1, Math.round(+r.qty / lotSize)); }
+    if(!lots) lots = 1;
+
+    let side = (r.side || 'BUY').trim().toUpperCase();
+    if(side === 'B') side = 'BUY';
+    if(side === 'S') side = 'SELL';
+
+    const t = {
+      id: uid('T'),
+      date: d,
+      time: tm.slice(0, 5) || '10:00',
+      trader: (r.trader || defTrader).trim(),
+      account: (r.account || defAccount).trim(),
+      symbol: sym,
+      strike: stk,
+      opt: opt,
+      expiryType: r.expiryType || '',
+      side: side,
+      lots: lots,
+      lotSize: lotSize,
+      entry: +r.entry || +r.price || 100,
+      exit: +r.exit || +r.entry || 100,
+      exitDate: r.exitDate || d,
+      exitTime: r.exitTime || tm,
+      spot: +r.spot || stk || 0,
+      product: (r.product || 'MIS').trim().toUpperCase(),
+      source: (r.source || 'Manual').trim(),
+      charges: +r.charges || 0,
+      hedged: String(r.hedged).toLowerCase() === 'true',
+      origin: 'import'
+    };
+    out.push(t);
+  }
+
+  if(!out.length){ toast('Could not parse any trades from the provided data'); return; }
+  S.trades.push(...out);
+  save();
+  liveCall(() => API.importTrades(out));
+  closeModal();
+  render();
+  const nf = out.filter(t => chk().byTrade[t.id]?.length).length;
+  toast(`Imported ${out.length} trades · ${nf} with red flags`);
 }
 function applyTF(){ SEL.tradeFilter={trader:val('tfTr'),flag:val('tfFlag'),from:val('tfFrom'),to:val('tfTo')}; render(); }
 function savePass(){ const P=S.settings.pass; Object.keys(P).forEach(k=>P[k]=+val('p_'+k)); S.settings.testDays=+val('s_testDays'); S.settings.extendDays=+val('s_extendDays'); S.settings.capitalSteps=val('s_capitalSteps'); save(); liveCall(()=>API.req('/settings',{method:'PUT',body:JSON.stringify(S.settings)})); render(); toast('Pass rules saved'); }
