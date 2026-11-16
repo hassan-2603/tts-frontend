@@ -443,7 +443,7 @@ function flagTable(list, showDate=true){
 }
 
 V.traders = () => header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
-  `<div class="card"><div class="tbl-wrap"><table><tr><th>Trader / ID</th><th>Status</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th style="text-align:right"></th></tr>
+  `<div class="card"><div class="tbl-wrap"><table><tr><th>Trader / ID</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th>Status</th><th style="text-align:right"></th></tr>
   ${S.traders.map(t=>{ 
     const acc=S.accounts.filter(a=>a.trader===t.id); 
     const sc=scorecard(t); 
@@ -453,10 +453,10 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
        linkedN > 0 ? `<span class="pill-linked" style="font-size:11px;padding:2px 7px">● ${linkedN}/${acc.length} Linked</span>` :
        `<span class="pill-disconnected" style="font-size:11px;padding:2px 7px">● Disconnected</span>`);
     return `<tr>
-    <td><b>${esc(t.name)}</b> <span class="muted mono" style="font-size:11px">(${t.id})</span></td>
-    <td>${statusPill(t.status)}${t.status==='Testing'||t.status==='Watch'?`<span class="muted" style="font-size:11px;margin-left:5px">Day ${sc.day}/${sc.total}</span>`:''}</td>
-    <td>${accBadge} <span class="muted" style="font-size:11px">(${acc.map(a=>a.broker).join(', ')||'—'})</span></td>
+    <td><b>${esc(t.name)}</b><div class="muted mono" style="font-size:11.5px">${t.id}</div></td>
+    <td>${accBadge}<div class="muted" style="font-size:11px;margin-top:2px">${[...new Set(acc.map(a=>a.broker))].join(', ')||'—'}</div></td>
     <td>${esc(t.ra)}</td><td>${t.style}</td><td>${t.holding}</td><td>${esc(t.segment)}</td><td class="n">${inr(t.testCapital)}</td>
+    <td>${statusPill(t.status)}${t.status==='Testing'||t.status==='Watch'?`<div class="muted" style="font-size:11.5px;margin-top:3px">Day ${sc.day} of ${sc.total}</div>`:''}</td>
     <td style="white-space:nowrap;text-align:right"><button class="btn sm" onclick="openReport('${t.id}')">Report</button> <button class="btn sm" onclick="openRules('${t.id}')">Rules</button> ${canEdit()?`<button class="btn sm" onclick="editTrader('${t.id}')">Edit</button>`:''}</td></tr>`; }).join('')}
   </table></div></div>
 
@@ -467,7 +467,7 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
     </div>
     <div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link status</th>':''}<th>Assigned trader</th><th class="n">Trades</th>${canEdit()?'<th style="text-align:right">Actions</th>':''}</tr>
       ${S.accounts.map(a=>`<tr>
-        <td><b>${esc(a.name)}</b> <span class="muted mono" style="font-size:11px">${a.id}</span></td>
+        <td><b>${esc(a.name)}</b><div class="muted mono" style="font-size:11.5px">${a.id}</div></td>
         <td>${esc(a.broker)}</td>
         ${LIVE?`<td class="mono"><b>${esc(a.zebu_uid||'—')}</b></td><td>${linkPill(a)}</td>`:''}
         <td>${esc(trader(a.trader)?.name||'—')}</td>
