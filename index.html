@@ -256,6 +256,8 @@ const API = {
   saveRules:(id,r,change)=>API.req('/rules/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({rules:r,change})}),
   importTrades:rows=>API.req('/trades/import',{method:'POST',body:JSON.stringify(rows)}),
   deleteTrade:id=>API.req('/trades/'+encodeURIComponent(id),{method:'DELETE'}),
+  deleteTradesBulk:ids=>API.req('/trades/delete-bulk',{method:'POST',body:JSON.stringify({ids})}),
+  unlinkAccount:id=>API.req('/accounts/'+encodeURIComponent(id)+'/unlink',{method:'POST'}),
   saveGroup:g=>API.req('/groups/'+encodeURIComponent(g.id),{method:'PUT',body:JSON.stringify(g)}),
   deleteGroup:id=>API.req('/groups/'+encodeURIComponent(id),{method:'DELETE'}),
 };
@@ -442,7 +444,7 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
   </table></div>
   <div class="grid k2" style="margin-top:14px">
     <div class="card"><h3>Broker accounts</h3><div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link</th>':''}<th>Trader</th><th class="n">Trades</th>${canEdit()?'<th></th>':''}</tr>
-      ${S.accounts.map(a=>`<tr><td>${esc(a.name)} <span class="muted mono">${a.id}</span></td><td>${esc(a.broker)}</td>${LIVE?`<td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td>`:''}<td>${esc(trader(a.trader)?.name||'—')}</td><td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>${canEdit()?`<td>${LIVE&&a.broker==='Zebu'?`<a class="btn sm pri" style="text-decoration:none;display:inline-block" href="/auth/zebu/start?account=${encodeURIComponent(a.id)}&fe=${encodeURIComponent(window.location.origin)}" target="_blank">${a.link==='Linked'?'Re-link':'Link Zebu login'}</a> `:''}<button class="btn sm" onclick="editAccount('${a.id}')">Edit</button></td>`:''}</tr>`).join('')}
+      ${S.accounts.map(a=>`<tr><td>${esc(a.name)} <span class="muted mono">${a.id}</span></td><td>${esc(a.broker)}</td>${LIVE?`<td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td>`:''}<td>${esc(trader(a.trader)?.name||'—')}</td><td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>${canEdit()?`<td>${LIVE&&a.broker==='Zebu'?`<a class="btn sm pri" style="text-decoration:none;display:inline-block" href="/auth/zebu/start?account=${encodeURIComponent(a.id)}&fe=${encodeURIComponent(window.location.origin)}" target="_blank">${a.link==='Linked'?'Re-link':'Link Zebu login'}</a> ${a.link==='Linked'?`<button class="btn sm danger" onclick="unlinkAccount('${a.id}')">Disconnect</button> `:''}`:''}<button class="btn sm" onclick="editAccount('${a.id}')">Edit</button></td>`:''}</tr>`).join('')}
     </table></div>${canEdit()?`<button class="btn sm" style="margin-top:10px" onclick="editAccount()">+ Add account</button>`:''}</div>
     <div class="card"><h3>Status of each trader</h3>
       <p>${statusPill('Testing')} &nbsp;Inside the 30-day test</p><p>${statusPill('Live')} &nbsp;Passed — on big capital</p>
@@ -492,18 +494,26 @@ V.trades = () => {
   if(F.flag==='flag') list=list.filter(t=>byTrade[t.id]?.length); if(F.flag==='ok') list=list.filter(t=>!byTrade[t.id]?.length);
   list.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+tradePnl(t),0);
-  return header('Trade log','One row per trade — pulled from the broker (read-only API) or uploaded trade book', `${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
+  const selCount = SELECTED_TRADE_IDS.size;
+  return header('Trade log','One row per trade — pulled from the broker (read-only API) or uploaded trade book', `${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
   `<div class="card" style="margin-bottom:14px"><div class="row">${traderSelect('tfTr',F.trader,true)}
     <select id="tfFlag"><option value="">All trades</option><option value="flag" ${F.flag==='flag'?'selected':''}>With red flag</option><option value="ok" ${F.flag==='ok'?'selected':''}>Clean (OK)</option></select>
     <input type="date" id="tfFrom" value="${F.from}"> → <input type="date" id="tfTo" value="${F.to}">
     <button class="btn sm" onclick="applyTF()">Apply</button><button class="btn sm" onclick="SEL.tradeFilter={trader:'',flag:'',from:'',to:''};render()">Clear</button>
     <div style="flex:1"></div><span class="muted">${list.length} trades · Net <b class="${cls(tot)}">${inrS(tot)}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
-  <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr><th>Date</th><th>Time</th><th>Trader</th><th>Account</th><th>Symbol</th><th>Strike</th><th>Spot</th><th>Side</th><th class="n">Lots</th><th class="n">Entry</th><th class="n">Exit</th><th>Product</th><th>Source</th><th class="n">Charges</th><th class="n">Net P&L</th><th>Check</th></tr>
-  ${shown.map(t=>{ const f=byTrade[t.id]||[], p=tradePnl(t), m=moneyness(t,S.settings.strikeStep); return `<tr class="click" onclick="openTrade('${t.id}')">
+  <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr>
+    ${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTrades" onchange="toggleSelectAllTrades(this.checked)" title="Select all shown"></th>`:''}
+    <th>Date</th><th>Time</th><th>Trader</th><th>Account</th><th>Symbol</th><th>Strike</th><th>Spot</th><th>Side</th><th class="n">Lots</th><th class="n">Entry</th><th class="n">Exit</th><th>Product</th><th>Source</th><th class="n">Charges</th><th class="n">Net P&L</th><th>Check</th>
+    ${canEdit()?`<th></th>`:''}
+  </tr>
+  ${shown.map(t=>{ const f=byTrade[t.id]||[], p=tradePnl(t), m=moneyness(t,S.settings.strikeStep), isSel=SELECTED_TRADE_IDS.has(t.id); return `<tr class="click" onclick="openTrade('${t.id}')">
+    ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" class="trade-chk" value="${t.id}" ${isSel?'checked':''} onchange="onTradeChkChange(this)"></td>`:''}
     <td class="mono">${fmtDate(t.date)}</td><td class="mono">${t.time}</td><td>${esc(trader(t.trader)?.name||t.trader)}</td><td>${esc(account(t.account)?.name||t.account)}</td>
     <td>${t.symbol}</td><td class="mono">${t.strike} ${t.opt} <span class="muted" style="font-size:11px">${mLabel(m.d)}</span></td><td class="mono">${t.spot?Math.round(t.spot).toLocaleString('en-IN'):'—'}</td><td>${t.side}</td><td class="n">${t.lots}</td>
     <td class="n">${t.entry.toFixed(2)}</td><td class="n">${t.open?'<span class="pill p-test">OPEN</span> '+t.exit.toFixed(2):t.exit.toFixed(2)}</td><td>${t.product==='NRML'||t.exitDate!==t.date?'NRML (CF)':'MIS'}</td><td>${t.source}</td><td class="n">${t.chargesEstimated?'~':''}${inr(t.charges)}</td>
-    <td class="n ${cls(p)}">${inr(p)}</td><td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td></tr>`; }).join('')}
+    <td class="n ${cls(p)}">${inr(p)}</td><td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td>
+    ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:right"><button class="btn sm danger" style="padding:2px 7px;font-size:11px;line-height:1" onclick="delTrade('${t.id}')" title="Delete this trade">✕</button></td>`:''}
+  </tr>`; }).join('')}
   </table></div></div>`;
 };
 
@@ -691,7 +701,73 @@ function openTrade(id){
    <div class="muted" style="font-size:12px;margin-top:8px">Expected strike by his rule: <b>${expectedStrike(t,r,S.settings.strikeStep)} ${t.opt}</b> (${r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode})</div></div>
   <div class="row" style="margin-top:14px;justify-content:flex-end">${canEdit()&&!(LIVE&&t.origin==='zebu')?`<button class="btn danger" onclick="delTrade('${t.id}')">Delete</button><button class="btn" onclick="editTrade('${t.id}')">Edit</button>`:''}${LIVE&&t.origin==='zebu'?'<span class="muted" style="font-size:12px;margin-right:auto">From Zebu trade book · charges estimated</span>':''}<button class="btn pri" onclick="closeModal()">Close</button></div>`);
 }
-function delTrade(id){ const t=S.trades.find(x=>x.id===id); if(LIVE&&t?.origin==='zebu'){ toast('Zebu trades come from the broker and cannot be deleted'); return; } S.trades=S.trades.filter(t=>t.id!==id); save(); liveCall(()=>API.deleteTrade(id)); closeModal(); render(); toast('Trade deleted'); }
+function delTrade(id){
+  const t=S.trades.find(x=>x.id===id);
+  if(!confirm('Delete this trade?')) return;
+  S.trades=S.trades.filter(x=>x.id!==id);
+  SELECTED_TRADE_IDS.delete(id);
+  save(); liveCall(()=>API.deleteTrade(id)); closeModal(); render(); toast('Trade deleted');
+}
+
+let SELECTED_TRADE_IDS = new Set();
+function toggleSelectAllTrades(checked){
+  const chks = document.querySelectorAll('.trade-chk');
+  chks.forEach(c => {
+    c.checked = checked;
+    if(checked) SELECTED_TRADE_IDS.add(c.value);
+    else SELECTED_TRADE_IDS.delete(c.value);
+  });
+  updateDelTradesBtn();
+}
+function onTradeChkChange(el){
+  if(el.checked) SELECTED_TRADE_IDS.add(el.value);
+  else SELECTED_TRADE_IDS.delete(el.value);
+  const allChks = document.querySelectorAll('.trade-chk');
+  const chkAll = document.getElementById('chkAllTrades');
+  if(chkAll) chkAll.checked = allChks.length > 0 && document.querySelectorAll('.trade-chk:checked').length === allChks.length;
+  updateDelTradesBtn();
+}
+function updateDelTradesBtn(){
+  const btn = document.getElementById('btnDelTrades');
+  const cnt = document.getElementById('selTradesCount');
+  if(!btn) return;
+  const count = SELECTED_TRADE_IDS.size;
+  if(count > 0){
+    btn.style.display = 'inline-block';
+    if(cnt) cnt.textContent = count;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+async function deleteSelectedTrades(){
+  const ids = Array.from(SELECTED_TRADE_IDS);
+  if(!ids.length) return;
+  if(!confirm(`Delete ${ids.length} selected trade(s)?`)) return;
+  S.trades = S.trades.filter(x => !ids.includes(x.id));
+  SELECTED_TRADE_IDS.clear();
+  save();
+  if(LIVE){
+    try {
+      await API.deleteTradesBulk(ids);
+      await API.syncAll();
+    } catch(e){ toast('Server: ' + e.message); }
+  }
+  render();
+  toast(`${ids.length} trade(s) deleted`);
+}
+async function unlinkAccount(id){
+  const a = account(id);
+  if(!confirm(`Disconnect ${a ? a.name : id} from Zebu?`)) return;
+  try {
+    if(LIVE) await API.unlinkAccount(id);
+    else { const o = account(id); if(o) o.link = 'Not linked'; save(); }
+    toast('Account disconnected');
+    if(LIVE) await API.syncAll();
+    render();
+  } catch(e) {
+    toast('Unlink error: ' + e.message);
+  }
+}
 
 function editTrader(id){
   const t=id?trader(id):{id:'TR-'+String(S.traders.length+1).padStart(3,'0'),name:'',ra:'',style:'Manual',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:TODAY};
