@@ -442,7 +442,7 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
   </table></div>
   <div class="grid k2" style="margin-top:14px">
     <div class="card"><h3>Broker accounts</h3><div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link</th>':''}<th>Trader</th><th class="n">Trades</th>${canEdit()?'<th></th>':''}</tr>
-      ${S.accounts.map(a=>`<tr><td>${esc(a.name)} <span class="muted mono">${a.id}</span></td><td>${esc(a.broker)}</td>${LIVE?`<td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td>`:''}<td>${esc(trader(a.trader)?.name||'—')}</td><td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>${canEdit()?`<td>${LIVE&&a.broker==='Zebu'?`<a class="btn sm pri" style="text-decoration:none;display:inline-block" href="/auth/zebu/start?account=${encodeURIComponent(a.id)}" target="_blank" rel="noopener">${a.link==='Linked'?'Re-link':'Link Zebu login'}</a> `:''}<button class="btn sm" onclick="editAccount('${a.id}')">Edit</button></td>`:''}</tr>`).join('')}
+      ${S.accounts.map(a=>`<tr><td>${esc(a.name)} <span class="muted mono">${a.id}</span></td><td>${esc(a.broker)}</td>${LIVE?`<td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td>`:''}<td>${esc(trader(a.trader)?.name||'—')}</td><td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>${canEdit()?`<td>${LIVE&&a.broker==='Zebu'?`<a class="btn sm pri" style="text-decoration:none;display:inline-block" href="/auth/zebu/start?account=${encodeURIComponent(a.id)}&fe=${encodeURIComponent(window.location.origin)}" target="_blank">${a.link==='Linked'?'Re-link':'Link Zebu login'}</a> `:''}<button class="btn sm" onclick="editAccount('${a.id}')">Edit</button></td>`:''}</tr>`).join('')}
     </table></div>${canEdit()?`<button class="btn sm" style="margin-top:10px" onclick="editAccount()">+ Add account</button>`:''}</div>
     <div class="card"><h3>Status of each trader</h3>
       <p>${statusPill('Testing')} &nbsp;Inside the 30-day test</p><p>${statusPill('Live')} &nbsp;Passed — on big capital</p>
@@ -725,7 +725,7 @@ function linkPill(a){
 function linkZebu(id){
   const a=account(id); if(!a || !a.zebu_uid){ toast('Enter the Zebu client ID first (Edit)'); editAccount(id); return; }
   toast('Opening Zebu login in new tab...');
-  window.open('/auth/zebu/start?account=' + encodeURIComponent(id), '_blank');
+  window.open('/auth/zebu/start?account=' + encodeURIComponent(id) + '&fe=' + encodeURIComponent(window.location.origin), '_blank');
 }
 async function refreshLive(){ if(!LIVE) return; try{ await API.syncAll(); render(); }catch(e){ toast(e.message); } }
 
