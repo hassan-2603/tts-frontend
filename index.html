@@ -443,28 +443,29 @@ function flagTable(list, showDate=true){
 }
 
 V.traders = () => header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
-  `<div class="card"><table><tr><th>Trader / ID</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th>Status</th><th></th></tr>
-  ${S.traders.map(t=>{ const acc=S.accounts.filter(a=>a.trader===t.id); const sc=scorecard(t); return `<tr>
-    <td><b>${esc(t.name)}</b><div class="muted mono" style="font-size:11.5px">${t.id}</div></td>
-    <td>
-      ${acc.length === 0 ? '<span class="muted">No accounts</span>' : acc.map(a => `
-        <div style="display:flex;align-items:center;gap:6px;margin:3px 0;flex-wrap:wrap">
-          <b>${esc(a.name)}</b> <span class="muted" style="font-size:11px">(${esc(a.broker)})</span>
-          ${linkPill(a)}
-          ${canEdit() && LIVE && a.broker === 'Zebu' ? (
-            a.link === 'Linked' ? 
-              `<button class="btn sm btn-disconnect" style="padding:2px 7px;font-size:10.5px" onclick="unlinkAccount('${a.id}')">Disconnect</button>` :
-              `<button class="btn sm btn-connect" style="padding:2px 7px;font-size:10.5px" onclick="openLinkModal('${a.id}')">Connect</button>`
-          ) : ''}
-        </div>
-      `).join('')}
-    </td>
+  `<div class="card"><div class="tbl-wrap"><table><tr><th>Trader / ID</th><th>Status</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th style="text-align:right"></th></tr>
+  ${S.traders.map(t=>{ 
+    const acc=S.accounts.filter(a=>a.trader===t.id); 
+    const sc=scorecard(t); 
+    const linkedN = acc.filter(a=>a.link==='Linked').length;
+    const accBadge = acc.length === 0 ? '<span class="muted">No accounts</span>' :
+      (linkedN === acc.length ? `<span class="pill-linked" style="font-size:11px;padding:2px 7px">● ${acc.length} Linked</span>` :
+       linkedN > 0 ? `<span class="pill-linked" style="font-size:11px;padding:2px 7px">● ${linkedN}/${acc.length} Linked</span>` :
+       `<span class="pill-disconnected" style="font-size:11px;padding:2px 7px">● Disconnected</span>`);
+    return `<tr>
+    <td><b>${esc(t.name)}</b> <span class="muted mono" style="font-size:11px">(${t.id})</span></td>
+    <td>${statusPill(t.status)}${t.status==='Testing'||t.status==='Watch'?`<span class="muted" style="font-size:11px;margin-left:5px">Day ${sc.day}/${sc.total}</span>`:''}</td>
+    <td>${accBadge} <span class="muted" style="font-size:11px">(${acc.map(a=>a.broker).join(', ')||'—'})</span></td>
     <td>${esc(t.ra)}</td><td>${t.style}</td><td>${t.holding}</td><td>${esc(t.segment)}</td><td class="n">${inr(t.testCapital)}</td>
-    <td>${statusPill(t.status)}${t.status==='Testing'||t.status==='Watch'?`<div class="muted" style="font-size:11.5px;margin-top:3px">Day ${sc.day} of ${sc.total}</div>`:''}</td>
-    <td style="white-space:nowrap"><button class="btn sm" onclick="openReport('${t.id}')">Report</button> <button class="btn sm" onclick="openRules('${t.id}')">Rules</button> ${canEdit()?`<button class="btn sm" onclick="editTrader('${t.id}')">Edit</button>`:''}</td></tr>`; }).join('')}
-  </table></div>
-  <div class="grid k2" style="margin-top:14px">
-    <div class="card"><h3>Broker accounts</h3><div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link status</th>':''}<th>Trader</th><th class="n">Trades</th>${canEdit()?'<th>Actions</th>':''}</tr>
+    <td style="white-space:nowrap;text-align:right"><button class="btn sm" onclick="openReport('${t.id}')">Report</button> <button class="btn sm" onclick="openRules('${t.id}')">Rules</button> ${canEdit()?`<button class="btn sm" onclick="editTrader('${t.id}')">Edit</button>`:''}</td></tr>`; }).join('')}
+  </table></div></div>
+
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <h3 style="margin:0">Broker accounts (${S.accounts.length})</h3>
+      ${canEdit()?`<button class="btn sm pri" onclick="editAccount()">+ Add account</button>`:''}
+    </div>
+    <div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link status</th>':''}<th>Assigned trader</th><th class="n">Trades</th>${canEdit()?'<th style="text-align:right">Actions</th>':''}</tr>
       ${S.accounts.map(a=>`<tr>
         <td><b>${esc(a.name)}</b> <span class="muted mono" style="font-size:11px">${a.id}</span></td>
         <td>${esc(a.broker)}</td>
@@ -472,11 +473,11 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
         <td>${esc(trader(a.trader)?.name||'—')}</td>
         <td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>
         ${canEdit()?`
-          <td style="white-space:nowrap">
+          <td style="white-space:nowrap;text-align:right">
             ${LIVE&&a.broker==='Zebu'?`
               ${a.link==='Linked'?`
                 <button class="btn sm btn-disconnect" onclick="unlinkAccount('${a.id}')">Disconnect</button>
-                <button class="btn sm btn-relink" onclick="openLinkModal('${a.id}')" title="Re-authenticate Zebu session">Re-link</button>
+                <button class="btn sm btn-relink" onclick="openLinkModal('${a.id}')" title="Re-link">Re-link</button>
               `:`
                 <button class="btn sm btn-connect" onclick="openLinkModal('${a.id}')">Connect Zebu</button>
               `}
@@ -485,10 +486,17 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
           </td>
         `:''}
       </tr>`).join('')}
-    </table></div>${canEdit()?`<button class="btn sm" style="margin-top:10px" onclick="editAccount()">+ Add account</button>`:''}</div>
-    <div class="card"><h3>Status of each trader</h3>
-      <p>${statusPill('Testing')} &nbsp;Inside the 30-day test</p><p>${statusPill('Live')} &nbsp;Passed — on big capital</p>
-      <p>${statusPill('Watch')} &nbsp;Test extended by ${S.settings.extendDays} days</p><p>${statusPill('Stopped')} &nbsp;Failed or paused</p></div>
+    </table></div>
+  </div>
+
+  <div class="card" style="margin-top:14px;padding:12px 16px">
+    <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;font-size:12.5px">
+      <span class="muted">Trader status legend:</span>
+      <span>${statusPill('Testing')} Inside 30-day test</span>
+      <span>${statusPill('Live')} Passed — live capital</span>
+      <span>${statusPill('Watch')} On watch (extended)</span>
+      <span>${statusPill('Stopped')} Failed or stopped</span>
+    </div>
   </div>`;
 
 V.rules = () => {
@@ -871,13 +879,13 @@ function saveAccount(id){ const a={id:id||val('a_id'),name:val('a_name'),broker:
 function linkPill(a){
   const isLinked = a.link === 'Linked';
   const isExpired = a.link === 'Login expired';
-  const ws = a.ws_status ? `<span class="pill ${a.ws_status==='REAL-TIME'?'p-live':a.ws_status==='DEGRADED'?'p-watch':'p-stop'}" style="margin-left:4px;font-size:10px">${esc(a.ws_status)}</span>` : '';
+  const ws = a.ws_status ? `<span class="pill ${a.ws_status==='REAL-TIME'?'p-live':a.ws_status==='DEGRADED'?'p-watch':'p-stop'}" style="margin-left:4px;font-size:9.5px;padding:1px 5px">${esc(a.ws_status)}</span>` : '';
   if(isLinked){
-    return `<span class="pill-linked"><span style="color:#22c55e">●</span> Linked</span>${ws}${a.cliname?`<div class="muted" style="font-size:11px">${esc(a.cliname)}</div>`:''}`;
+    return `<span class="pill-linked" style="font-size:11px;padding:2px 7px"><span style="color:#22c55e">●</span> Linked</span>${ws}${a.cliname?`<span class="muted" style="font-size:11px;margin-left:5px">(${esc(a.cliname)})</span>`:''}`;
   } else if(isExpired){
-    return `<span class="pill-disconnected" style="border-color:#f59e0b;color:#fcd34d;background:#451a03"><span style="color:#f59e0b">●</span> Login expired</span>${ws}`;
+    return `<span class="pill-disconnected" style="border-color:#f59e0b;color:#fcd34d;background:#451a03;font-size:11px;padding:2px 7px"><span style="color:#f59e0b">●</span> Expired</span>${ws}`;
   } else {
-    return `<span class="pill-disconnected"><span style="color:#ef4444">●</span> Disconnected</span>${ws}`;
+    return `<span class="pill-disconnected" style="font-size:11px;padding:2px 7px"><span style="color:#ef4444">●</span> Disconnected</span>${ws}`;
   }
 }
 function openLinkModal(id){
