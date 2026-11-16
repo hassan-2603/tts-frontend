@@ -1077,7 +1077,20 @@ try {
     }catch(e){ USER='admin'; }
   }
   render();
-  if(location.search.includes('linked=true')){
+  const urlParams = new URLSearchParams(location.search);
+  const codeVal = urlParams.get('code');
+  if(codeVal){
+    try {
+      toast('Exchanging Zebu login code...');
+      await fetch('/auth/zebu/callback?code=' + encodeURIComponent(codeVal) + '&state=' + encodeURIComponent(urlParams.get('state')||''));
+      toast('Account linked to Zebu successfully!');
+      history.replaceState(null, '', location.pathname + (location.hash || '#traders'));
+      if(LIVE) await API.syncAll();
+      render();
+    } catch(e) {
+      toast('Link exchange error: ' + e.message);
+    }
+  } else if(location.search.includes('linked=true')){
     toast('Account linked to Zebu successfully!');
     history.replaceState(null, '', location.pathname + (location.hash || '#traders'));
   }
