@@ -982,6 +982,7 @@ function doImport(){
       side: side,
       lots: lots,
       lotSize: lotSize,
+      qty: lots * lotSize,
       entry: +r.entry || +r.price || 100,
       exit: +r.exit || +r.entry || 100,
       exitDate: r.exitDate || d,
