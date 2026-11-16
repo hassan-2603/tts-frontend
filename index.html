@@ -34,6 +34,8 @@ main{padding:22px 28px 60px;min-width:0}
 .top .sub{color:var(--muted);font-size:13px}
 .top .sp{flex:1}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill-linked{background:#064e3b;color:#34d399;border:1px solid #059669;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.pill-disconnected{background:#450a0a;color:#f87171;border:1px solid #dc2626;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
 .p-test{background:#1d2c55;color:#8fb3ff}.p-live{background:#0f3a2d;color:#4fe0ad}.p-watch{background:#3d3015;color:#ffc861}.p-stop{background:#3d1820;color:#ff8792}
 .p-high{background:#3d1820;color:#ff8792}.p-med{background:#3d3015;color:#ffc861}.p-low{background:#232c45;color:#aab6d3}
 .p-pass{background:#0f3a2d;color:#4fe0ad}.p-fail{background:#3d1820;color:#ff8792}
@@ -59,6 +61,12 @@ td.n,th.n{text-align:right;font-family:var(--mono)}
 .btn.danger{color:#ff8792}
 .btn.sm{padding:4px 9px;font-size:12px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-connect{background:#059669 !important;border-color:#10b981 !important;color:#fff !important;font-weight:600}
+.btn-connect:hover{background:#047857 !important}
+.btn-disconnect{background:#7f1d1d !important;border-color:#ef4444 !important;color:#fecaca !important;font-weight:600}
+.btn-disconnect:hover{background:#991b1b !important;color:#fff !important}
+.btn-relink{background:#1e3a8a !important;border-color:#3b82f6 !important;color:#bfdbfe !important;font-weight:600}
+.btn-relink:hover{background:#1d4ed8 !important;color:#fff !important}
 input,select,textarea{background:#0d1428;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 9px;font:inherit}
 input:focus,select:focus,textarea:focus{outline:1px solid var(--accent)}
 label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
@@ -406,7 +414,7 @@ V.overview = () => {
   const all=metrics(S.trades);
   const pnlToday=tToday.reduce((a,t)=>a+tradePnl(t),0);
   const cnt=s=>S.traders.filter(t=>t.status===s).length;
-  return header('Overview', 'Today · '+fmtDate(TODAY)+' 2026 · all traders', `<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
+  return header('Overview', 'Today · '+fmtDate(TODAY)+' 2026 · all traders', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
   `<div class="grid k6">
     ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
     ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
@@ -434,18 +442,49 @@ function flagTable(list, showDate=true){
   ${list.map(f=>`<tr class="click" onclick="openTrade('${f.trade.id}')">${showDate?`<td class="mono">${fmtDate(f.trade.date)}</td>`:''}<td class="mono">${f.trade.time}</td><td>${esc(trader(f.trade.trader)?.name||f.trade.trader)}</td><td>${esc(f.rule)}</td><td class="flagtxt">${esc(f.did)}</td><td>${levelPill(f.level)}</td></tr>`).join('')}</table></div>`;
 }
 
-V.traders = () => header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', canEdit()?`<button class="btn pri" onclick="editTrader()">+ Add trader</button>`:'') +
+V.traders = () => header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
   `<div class="card"><table><tr><th>Trader / ID</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th>Status</th><th></th></tr>
   ${S.traders.map(t=>{ const acc=S.accounts.filter(a=>a.trader===t.id); const sc=scorecard(t); return `<tr>
     <td><b>${esc(t.name)}</b><div class="muted mono" style="font-size:11.5px">${t.id}</div></td>
-    <td>${acc.length} <span class="muted">(${[...new Set(acc.map(a=>a.broker))].join(', ')||'—'})</span></td>
+    <td>
+      ${acc.length === 0 ? '<span class="muted">No accounts</span>' : acc.map(a => `
+        <div style="display:flex;align-items:center;gap:6px;margin:3px 0;flex-wrap:wrap">
+          <b>${esc(a.name)}</b> <span class="muted" style="font-size:11px">(${esc(a.broker)})</span>
+          ${linkPill(a)}
+          ${canEdit() && LIVE && a.broker === 'Zebu' ? (
+            a.link === 'Linked' ? 
+              `<button class="btn sm btn-disconnect" style="padding:2px 7px;font-size:10.5px" onclick="unlinkAccount('${a.id}')">Disconnect</button>` :
+              `<button class="btn sm btn-connect" style="padding:2px 7px;font-size:10.5px" onclick="openLinkModal('${a.id}')">Connect</button>`
+          ) : ''}
+        </div>
+      `).join('')}
+    </td>
     <td>${esc(t.ra)}</td><td>${t.style}</td><td>${t.holding}</td><td>${esc(t.segment)}</td><td class="n">${inr(t.testCapital)}</td>
     <td>${statusPill(t.status)}${t.status==='Testing'||t.status==='Watch'?`<div class="muted" style="font-size:11.5px;margin-top:3px">Day ${sc.day} of ${sc.total}</div>`:''}</td>
     <td style="white-space:nowrap"><button class="btn sm" onclick="openReport('${t.id}')">Report</button> <button class="btn sm" onclick="openRules('${t.id}')">Rules</button> ${canEdit()?`<button class="btn sm" onclick="editTrader('${t.id}')">Edit</button>`:''}</td></tr>`; }).join('')}
   </table></div>
   <div class="grid k2" style="margin-top:14px">
-    <div class="card"><h3>Broker accounts</h3><div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link</th>':''}<th>Trader</th><th class="n">Trades</th>${canEdit()?'<th></th>':''}</tr>
-      ${S.accounts.map(a=>`<tr><td>${esc(a.name)} <span class="muted mono">${a.id}</span></td><td>${esc(a.broker)}</td>${LIVE?`<td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td>`:''}<td>${esc(trader(a.trader)?.name||'—')}</td><td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>${canEdit()?`<td>${LIVE&&a.broker==='Zebu'?`<button class="btn sm pri" onclick="openLinkModal('${a.id}')">${a.link==='Linked'?'Re-link':'Link Zebu'}</button> ${a.link==='Linked'?`<button class="btn sm danger" onclick="unlinkAccount('${a.id}')">Disconnect</button> `:''}`:''}<button class="btn sm" onclick="editAccount('${a.id}')">Edit</button></td>`:''}</tr>`).join('')}
+    <div class="card"><h3>Broker accounts</h3><div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link status</th>':''}<th>Trader</th><th class="n">Trades</th>${canEdit()?'<th>Actions</th>':''}</tr>
+      ${S.accounts.map(a=>`<tr>
+        <td><b>${esc(a.name)}</b> <span class="muted mono" style="font-size:11px">${a.id}</span></td>
+        <td>${esc(a.broker)}</td>
+        ${LIVE?`<td class="mono"><b>${esc(a.zebu_uid||'—')}</b></td><td>${linkPill(a)}</td>`:''}
+        <td>${esc(trader(a.trader)?.name||'—')}</td>
+        <td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>
+        ${canEdit()?`
+          <td style="white-space:nowrap">
+            ${LIVE&&a.broker==='Zebu'?`
+              ${a.link==='Linked'?`
+                <button class="btn sm btn-disconnect" onclick="unlinkAccount('${a.id}')">Disconnect</button>
+                <button class="btn sm btn-relink" onclick="openLinkModal('${a.id}')" title="Re-authenticate Zebu session">Re-link</button>
+              `:`
+                <button class="btn sm btn-connect" onclick="openLinkModal('${a.id}')">Connect Zebu</button>
+              `}
+            `:''}
+            <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
+          </td>
+        `:''}
+      </tr>`).join('')}
     </table></div>${canEdit()?`<button class="btn sm" style="margin-top:10px" onclick="editAccount()">+ Add account</button>`:''}</div>
     <div class="card"><h3>Status of each trader</h3>
       <p>${statusPill('Testing')} &nbsp;Inside the 30-day test</p><p>${statusPill('Live')} &nbsp;Passed — on big capital</p>
@@ -496,7 +535,7 @@ V.trades = () => {
   list.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+tradePnl(t),0);
   const selCount = SELECTED_TRADE_IDS.size;
-  return header('Trade log','One row per trade — pulled from the broker (read-only API) or uploaded trade book', `${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
+  return header('Trade log','One row per trade — pulled from the broker (read-only API) or uploaded trade book', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
   `<div class="card" style="margin-bottom:14px"><div class="row">${traderSelect('tfTr',F.trader,true)}
     <select id="tfFlag"><option value="">All trades</option><option value="flag" ${F.flag==='flag'?'selected':''}>With red flag</option><option value="ok" ${F.flag==='ok'?'selected':''}>Clean (OK)</option></select>
     <input type="date" id="tfFrom" value="${F.from}"> → <input type="date" id="tfTo" value="${F.to}">
@@ -544,11 +583,29 @@ V.report = () => {
   else { from=''; label='All time'; }
   const tr=tradesOf(t.id,from,to), m=metrics(tr,t.testCapital), {byTrade}=chk(), sc=scorecard(t);
   const fl=tr.flatMap(x=>(byTrade[x.id]||[]).map(f=>({...f,trade:x}))).sort((a,b)=>(b.trade.date+b.trade.time).localeCompare(a.trade.date+a.trade.time));
+  const tAccounts = S.accounts.filter(a => a.trader === t.id);
+  const accBar = tAccounts.length ? `
+    <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;gap:12px">
+      <span class="muted" style="font-size:12px">Broker Accounts:</span>
+      ${tAccounts.map(a => `
+        <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <b>${esc(a.name)}</b> <span class="muted mono" style="font-size:11px">(${esc(a.zebu_uid || a.broker)})</span>
+          ${linkPill(a)}
+          ${canEdit() && a.broker === 'Zebu' ? (
+            a.link === 'Linked' ? 
+              `<button class="btn sm btn-disconnect" style="padding:2px 7px;font-size:10.5px" onclick="unlinkAccount('${a.id}')">Disconnect</button>` :
+              `<button class="btn sm btn-connect" style="padding:2px 7px;font-size:10.5px" onclick="openLinkModal('${a.id}')">Connect</button>`
+          ) : ''}
+        </span>
+      `).join('')}
+    </div>
+  ` : '';
   setTimeout(()=>drawReportCharts(m),0);
   return header(esc(t.name)+' — report card', `${t.id} · ${t.style} · ${t.holding} · ${esc(t.segment)} · ${label}`,
     `${traderSelect('selTr',t.id)}<div class="tabs">${[['test','Test period'],['month','This month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${SEL.range===k?'on':''}" onclick="SEL.range='${k}';render()">${l}</button>`).join('')}</div>
      ${SEL.range==='custom'?`<input type="date" id="rFrom" value="${SEL.from}"><input type="date" id="rTo" value="${SEL.to}"><button class="btn sm" onclick="SEL.from=$('#rFrom').value;SEL.to=$('#rTo').value;render()">Go</button>`:''}
      <button class="btn" onclick="exportCSV('report')">Export</button>`) +
+  accBar +
   `<div class="grid k6">${kpi('Total P&L',inrS(m.total),m.n+' trades',cls(m.total))}${kpi('Accuracy',pct(m.accuracy),'winning ÷ total trades')}${kpi('Risk : Reward',isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—','avg win ÷ avg loss')}
    ${kpi('Max drawdown',inr(m.mdd),pct(m.mddPct,1)+' of capital','neg')}${kpi('Trades / day',m.tpd.toFixed(1),m.days+' trading days')}${kpi('Rule-follow',pct(m.ruleFollow),m.flagsN+' flags · '+m.high+' high',m.ruleFollow>=S.settings.pass.ruleFollow?'pos':'amb')}</div>
   <div class="grid c21" style="margin-top:14px"><div class="card"><h3>Profit growth <small>₹, cumulative</small><span style="flex:1"></span><small>Intraday ${pct(m.intraday)} · Manual ${pct(m.manual)} · ${m.n} trades</small></h3><div style="height:240px"><canvas id="cGrowth"></canvas></div>
@@ -788,16 +845,40 @@ function saveTrader(id){
 }
 function editAccount(id){
   const a=id?account(id):{id:'AC-'+String(S.accounts.length+1).padStart(2,'0'),name:'Account '+(S.accounts.length+1),broker:LIVE?'Zebu':'Angel One',trader:S.traders[0]?.id,zebu_uid:'',zebu_actid:''};
+  const statusHtml = id && LIVE && a.broker === 'Zebu' ? `
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:12px;color:#94a3b8">Broker Connection Status:</div>
+        <div style="margin-top:4px">${linkPill(a)}</div>
+      </div>
+      <div>
+        ${a.link === 'Linked' ? `
+          <button class="btn sm btn-disconnect" type="button" onclick="unlinkAccount('${a.id}')">Disconnect</button>
+          <button class="btn sm btn-relink" type="button" onclick="openLinkModal('${a.id}')" style="margin-left:6px">Re-link</button>
+        ` : `
+          <button class="btn sm btn-connect" type="button" onclick="openLinkModal('${a.id}')">Connect Zebu</button>
+        `}
+      </div>
+    </div>
+  ` : '';
   modal(`<h2>${id?'Edit':'Add'} account</h2><div class="form"><label class="f">Account ID<input id="a_id" value="${a.id}" ${id?'disabled':''}></label><label class="f">Name<input id="a_name" value="${esc(a.name)}"></label>
    <label class="f">Broker<select id="a_broker">${['Zebu','Angel One','Zerodha','Dhan','Fyers','Upstox','Other'].map(b=>`<option ${a.broker===b?'selected':''}>${b}</option>`).join('')}</select></label><label class="f">Trader${traderSelect('a_trader',a.trader)}</label>
    <label class="f">Zebu client ID (uid)<input id="a_zuid" value="${esc(a.zebu_uid||'')}" placeholder="e.g. ZP12345"></label><label class="f">Zebu account ID (actid)<input id="a_zact" value="${esc(a.zebu_actid||'')}" placeholder="usually same as uid"></label></div>
+   ${statusHtml}
    <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveAccount(${id?`'${id}'`:'null'})">Save</button></div>`);
 }
 function saveAccount(id){ const a={id:id||val('a_id'),name:val('a_name'),broker:val('a_broker'),trader:val('a_trader'),zebu_uid:(val('a_zuid')||'').trim().toUpperCase(),zebu_actid:(val('a_zact')||'').trim().toUpperCase()}; const o=id?account(id):null; if(o) Object.assign(o,a); else S.accounts.push(a); save(); liveCall(()=>API.saveAccount(a)); closeModal(); render(); toast('Account saved'); }
 function linkPill(a){
-  const l=a.link||'Not linked';
+  const isLinked = a.link === 'Linked';
+  const isExpired = a.link === 'Login expired';
   const ws = a.ws_status ? `<span class="pill ${a.ws_status==='REAL-TIME'?'p-live':a.ws_status==='DEGRADED'?'p-watch':'p-stop'}" style="margin-left:4px;font-size:10px">${esc(a.ws_status)}</span>` : '';
-  return `<span class="pill ${l==='Linked'?'p-live':l==='Login expired'?'p-stop':'p-watch'}">${l}</span>${ws}${a.cliname?`<div class="muted" style="font-size:11px">${esc(a.cliname)}</div>`:''}`;
+  if(isLinked){
+    return `<span class="pill-linked"><span style="color:#22c55e">●</span> Linked</span>${ws}${a.cliname?`<div class="muted" style="font-size:11px">${esc(a.cliname)}</div>`:''}`;
+  } else if(isExpired){
+    return `<span class="pill-disconnected" style="border-color:#f59e0b;color:#fcd34d;background:#451a03"><span style="color:#f59e0b">●</span> Login expired</span>${ws}`;
+  } else {
+    return `<span class="pill-disconnected"><span style="color:#ef4444">●</span> Disconnected</span>${ws}`;
+  }
 }
 function openLinkModal(id){
   const a = account(id);
