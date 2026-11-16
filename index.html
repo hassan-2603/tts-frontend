@@ -980,13 +980,33 @@ function loginView(){
    <div class="muted" style="font-size:12px;margin-top:10px">${LIVE?'Live · Zebu data. Ask the admin for a login.':'Demo login with sample data. The live server uses real passwords.'}</div></div></div>`;
 }
 async function login(){
-  if(!LIVE){ USER=val('lu')||'admin'; ROLE=val('lr'); try{ sessionStorage.setItem('tts_user',JSON.stringify({USER,ROLE})); }catch(e){} render(); return; }
-  try{ const r=await API.req('/login',{method:'POST',body:JSON.stringify({user:val('lu'),password:val('lp')})});
-    TOKEN=r.token; USER=r.user; ROLE=r.role; try{ sessionStorage.setItem('tts_live',JSON.stringify({TOKEN,USER,ROLE})); }catch(e){}
+  if(!LIVE){
+    USER=val('lu')||'admin'; ROLE=val('lr');
+    try{
+      localStorage.setItem('tts_user',JSON.stringify({USER,ROLE}));
+      sessionStorage.setItem('tts_user',JSON.stringify({USER,ROLE}));
+    }catch(e){}
+    render(); return;
+  }
+  try{
+    const r=await API.req('/login',{method:'POST',body:JSON.stringify({user:val('lu'),password:val('lp')})});
+    TOKEN=r.token; USER=r.user; ROLE=r.role;
+    try{
+      localStorage.setItem('tts_live',JSON.stringify({TOKEN,USER,ROLE}));
+      sessionStorage.setItem('tts_live',JSON.stringify({TOKEN,USER,ROLE}));
+    }catch(e){}
     await API.syncAll(); initDashboardWebSocket(); render();
   }catch(e){ const el=$('#lerr'); if(el) el.textContent=e.message; }
 }
-function logout(){ try{ sessionStorage.removeItem('tts_user'); sessionStorage.removeItem('tts_live'); }catch(e){} USER=null; TOKEN=null; render(); }
+function logout(){
+  try{
+    localStorage.removeItem('tts_user');
+    localStorage.removeItem('tts_live');
+    sessionStorage.removeItem('tts_user');
+    sessionStorage.removeItem('tts_live');
+  }catch(e){}
+  USER=null; TOKEN=null; render();
+}
 function render(){
   if(!USER){ $('#root').innerHTML=loginView(); return; }
   if(!V[VIEW]) VIEW='overview';
@@ -1029,16 +1049,32 @@ function initDashboardWebSocket(){
   } catch(e){}
 }
 
+try {
+  const bc = new BroadcastChannel('tts_auth');
+  bc.onmessage = (ev) => {
+    if(ev.data && ev.data.type === 'zebu_linked'){
+      toast('Zebu account linked successfully!');
+      refreshLive();
+    }
+  };
+} catch(e) {}
+
 (async function init(){
   $('#root').innerHTML='<div class="login"><div class="muted">Loading…</div></div>';
   LIVE = await detectLive();
   if(LIVE){
     S={settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),traders:[],accounts:[],rules:{},ruleLog:[],trades:[],groups:[]}; USER=null;
-    try{ const u=JSON.parse(sessionStorage.getItem('tts_live')||'null'); if(u){ TOKEN=u.TOKEN; USER=u.USER; ROLE=u.ROLE; await API.syncAll(); initDashboardWebSocket(); } }catch(e){ USER=null; TOKEN=null; }
+    try{
+      const u=JSON.parse(localStorage.getItem('tts_live')||sessionStorage.getItem('tts_live')||'null');
+      if(u){ TOKEN=u.TOKEN; USER=u.USER; ROLE=u.ROLE; await API.syncAll(); initDashboardWebSocket(); }
+    }catch(e){ USER=null; TOKEN=null; }
     setInterval(()=>{ if(USER && !$('#mbg').classList.contains('on') && document.visibilityState!=='hidden' && !document.activeElement?.matches?.('input,select,textarea')) refreshLive(); }, 30000);
   } else {
     load();
-    try{ const u=JSON.parse(sessionStorage.getItem('tts_user')||'null'); if(u){ USER=u.USER; ROLE=u.ROLE; } else USER=null; }catch(e){ USER='admin'; }
+    try{
+      const u=JSON.parse(localStorage.getItem('tts_user')||sessionStorage.getItem('tts_user')||'null');
+      if(u){ USER=u.USER; ROLE=u.ROLE; } else USER=null;
+    }catch(e){ USER='admin'; }
   }
   render();
   if(location.search.includes('linked=true')){
