@@ -258,6 +258,7 @@ const API = {
   deleteTrade:id=>API.req('/trades/'+encodeURIComponent(id),{method:'DELETE'}),
   deleteTradesBulk:ids=>API.req('/trades/delete-bulk',{method:'POST',body:JSON.stringify({ids})}),
   unlinkAccount:id=>API.req('/accounts/'+encodeURIComponent(id)+'/unlink',{method:'POST'}),
+  saveAccountToken:(id,token)=>API.req('/accounts/'+encodeURIComponent(id)+'/token',{method:'POST',body:JSON.stringify({token})}),
   saveGroup:g=>API.req('/groups/'+encodeURIComponent(g.id),{method:'PUT',body:JSON.stringify(g)}),
   deleteGroup:id=>API.req('/groups/'+encodeURIComponent(id),{method:'DELETE'}),
 };
@@ -444,7 +445,7 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
   </table></div>
   <div class="grid k2" style="margin-top:14px">
     <div class="card"><h3>Broker accounts</h3><div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link</th>':''}<th>Trader</th><th class="n">Trades</th>${canEdit()?'<th></th>':''}</tr>
-      ${S.accounts.map(a=>`<tr><td>${esc(a.name)} <span class="muted mono">${a.id}</span></td><td>${esc(a.broker)}</td>${LIVE?`<td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td>`:''}<td>${esc(trader(a.trader)?.name||'—')}</td><td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>${canEdit()?`<td>${LIVE&&a.broker==='Zebu'?`<a class="btn sm pri" style="text-decoration:none;display:inline-block" href="/auth/zebu/start?account=${encodeURIComponent(a.id)}&fe=${encodeURIComponent(window.location.origin)}" target="_blank">${a.link==='Linked'?'Re-link':'Link Zebu login'}</a> ${a.link==='Linked'?`<button class="btn sm danger" onclick="unlinkAccount('${a.id}')">Disconnect</button> `:''}`:''}<button class="btn sm" onclick="editAccount('${a.id}')">Edit</button></td>`:''}</tr>`).join('')}
+      ${S.accounts.map(a=>`<tr><td>${esc(a.name)} <span class="muted mono">${a.id}</span></td><td>${esc(a.broker)}</td>${LIVE?`<td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td>`:''}<td>${esc(trader(a.trader)?.name||'—')}</td><td class="n">${S.trades.filter(t=>t.account===a.id).length}</td>${canEdit()?`<td>${LIVE&&a.broker==='Zebu'?`<button class="btn sm pri" onclick="openLinkModal('${a.id}')">${a.link==='Linked'?'Re-link':'Link Zebu'}</button> ${a.link==='Linked'?`<button class="btn sm danger" onclick="unlinkAccount('${a.id}')">Disconnect</button> `:''}`:''}<button class="btn sm" onclick="editAccount('${a.id}')">Edit</button></td>`:''}</tr>`).join('')}
     </table></div>${canEdit()?`<button class="btn sm" style="margin-top:10px" onclick="editAccount()">+ Add account</button>`:''}</div>
     <div class="card"><h3>Status of each trader</h3>
       <p>${statusPill('Testing')} &nbsp;Inside the 30-day test</p><p>${statusPill('Live')} &nbsp;Passed — on big capital</p>
@@ -798,10 +799,72 @@ function linkPill(a){
   const ws = a.ws_status ? `<span class="pill ${a.ws_status==='REAL-TIME'?'p-live':a.ws_status==='DEGRADED'?'p-watch':'p-stop'}" style="margin-left:4px;font-size:10px">${esc(a.ws_status)}</span>` : '';
   return `<span class="pill ${l==='Linked'?'p-live':l==='Login expired'?'p-stop':'p-watch'}">${l}</span>${ws}${a.cliname?`<div class="muted" style="font-size:11px">${esc(a.cliname)}</div>`:''}`;
 }
+function openLinkModal(id){
+  const a = account(id);
+  if(!a){ toast('Account not found'); return; }
+  if(!a.zebu_uid){
+    toast('Please enter the Zebu Client ID (uid) first (click Edit)');
+    editAccount(id);
+    return;
+  }
+  const startUrl = `${window.location.origin}/auth/zebu/start?account=${encodeURIComponent(a.id)}&fe=${encodeURIComponent(window.location.origin)}`;
+
+  modal(`<h2>Link Zebu Account · ${esc(a.name)}</h2>
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin:12px 0">
+      <div style="font-size:12px;color:#94a3b8">Target Zebu Client ID:</div>
+      <div style="font-size:18px;font-weight:700;color:#38bdf8;font-family:var(--mono);margin-top:2px">${esc(a.zebu_uid)}</div>
+      <div style="font-size:12px;color:#cbd5e1;margin-top:8px;line-height:1.5">
+        💡 <b>Connecting Multiple Accounts:</b> If you already logged into another Zebu account in this browser, Zebu will automatically reuse that login. To connect <b>${esc(a.zebu_uid)}</b> with its own password, open the link in a <b>Private / Incognito window</b> (or log out of Zebu first).
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <h3 style="margin-bottom:6px">Method 1: Direct Login Link (Private / Incognito)</h3>
+      <p class="muted" style="font-size:12.5px;margin-bottom:8px">Open this link in an Incognito tab, enter <b>${esc(a.zebu_uid)}</b>'s password, and click Authorize:</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button class="btn pri" onclick="copyLink('${startUrl}')">📋 Copy Link for Incognito</button>
+        <a class="btn" href="${startUrl}" target="_blank">Open in New Tab</a>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;border-top:1px solid #334155;padding-top:14px">
+      <h3 style="margin-bottom:6px">Method 2: Paste Login URL or Code</h3>
+      <p class="muted" style="font-size:12.5px;margin-bottom:8px">If you authorized in an incognito window or on another device, paste the redirected URL or authorization code here:</p>
+      <input id="link_code_input" placeholder="e.g. https://tts-backend-ezm3.onrender.com/auth/zebu/callback?code=... or raw code" style="width:100%;margin-bottom:10px;font-family:var(--mono);font-size:12px">
+      <div class="row" style="justify-content:flex-end;gap:8px">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn pri" id="btnSubmitCode" onclick="submitManualCode('${a.id}')">Connect Account</button>
+      </div>
+    </div>`);
+}
+
+function copyLink(url){
+  navigator.clipboard.writeText(url).then(()=>{
+    toast('Link copied! Open a Private/Incognito window, paste, and log into Zebu.');
+  }).catch(()=>{
+    prompt('Copy this login link and open it in a Private/Incognito window:', url);
+  });
+}
+
+async function submitManualCode(aid){
+  const code = (val('link_code_input') || '').trim();
+  if(!code){ toast('Please paste the redirect URL or code first'); return; }
+  const btn = document.getElementById('btnSubmitCode');
+  if(btn){ btn.disabled = true; btn.textContent = 'Connecting...'; }
+  try {
+    const res = await API.saveAccountToken(aid, code);
+    toast(`Connected successfully! ${res.cliname ? '(' + res.cliname + ')' : ''}`);
+    closeModal();
+    if(LIVE) await API.syncAll();
+    render();
+  } catch(e) {
+    toast('Error: ' + e.message);
+    if(btn){ btn.disabled = false; btn.textContent = 'Connect Account'; }
+  }
+}
+
 function linkZebu(id){
-  const a=account(id); if(!a || !a.zebu_uid){ toast('Enter the Zebu client ID first (Edit)'); editAccount(id); return; }
-  toast('Opening Zebu login in new tab...');
-  window.open('/auth/zebu/start?account=' + encodeURIComponent(id) + '&fe=' + encodeURIComponent(window.location.origin), '_blank');
+  openLinkModal(id);
 }
 async function refreshLive(){ if(!LIVE) return; try{ await API.syncAll(); render(); }catch(e){ toast(e.message); } }
 
@@ -1131,6 +1194,7 @@ try {
   bc.onmessage = (ev) => {
     if(ev.data && ev.data.type === 'zebu_linked'){
       toast('Zebu account linked successfully!');
+      closeModal();
       refreshLive();
     }
   };
