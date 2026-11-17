@@ -853,7 +853,7 @@ function saveTrader(id){
   save(); liveCall(()=>API.saveTrader(t)); closeModal(); render(); toast('Trader saved');
 }
 function editAccount(id){
-  const a=id?account(id):{id:'AC-'+String(S.accounts.length+1).padStart(2,'0'),name:'Account '+(S.accounts.length+1),broker:LIVE?'Zebu':'Angel One',trader:S.traders[0]?.id,zebu_uid:'',zebu_actid:'',zebu_secret_key:''};
+  const a=id?account(id):{id:'AC-'+String(S.accounts.length+1).padStart(2,'0'),name:'Account '+(S.accounts.length+1),broker:LIVE?'Zebu':'Angel One',trader:S.traders[0]?.id,zebu_uid:'',zebu_actid:'',zebu_secret_key:'',proxy_url:''};
   const statusHtml = id && LIVE && a.broker === 'Zebu' ? `
     <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div>
@@ -877,6 +877,7 @@ function editAccount(id){
     <label class="f">Trader${traderSelect('a_trader',a.trader)}</label>
     <label class="f">Zebu Client ID (uid)<input id="a_zuid" value="${esc(a.zebu_uid||'')}" placeholder="e.g. 47000S19 or Z58805"></label>
     <label class="f">Zebu API Secret Key<input id="a_zsecret" type="password" value="${esc(a.zebu_secret_key||'')}" placeholder="API Secret from Zebu settings (optional)"></label>
+    <label class="f">Static Proxy URL (optional)<input id="a_proxy" value="${esc(a.proxy_url||'')}" placeholder="e.g. http://user:pass@79.127.168.43:port"></label>
     <label class="f">Zebu Account ID (actid)<input id="a_zact" value="${esc(a.zebu_actid||'')}" placeholder="usually same as uid"></label>
   </div>
   ${statusHtml}
@@ -894,6 +895,7 @@ function saveAccount(id){
     zebu_uid: (val('a_zuid') || '').trim().toUpperCase(),
     zebu_client_id: (val('a_zuid') || '').trim(),
     zebu_secret_key: (val('a_zsecret') || '').trim(),
+    proxy_url: (val('a_proxy') || '').trim(),
     zebu_actid: (val('a_zact') || val('a_zuid') || '').trim().toUpperCase(),
   };
   const o = id ? account(id) : null;
