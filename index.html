@@ -478,9 +478,9 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
             ${LIVE&&a.broker==='Zebu'?`
               ${a.link==='Linked'?`
                 <button class="btn sm btn-disconnect" onclick="unlinkAccount('${a.id}')">Disconnect</button>
-                <a class="btn sm btn-relink" href="${getZebuStartUrl(a.id)}" onclick="return checkZebuConnect(event, '${a.id}')" title="Re-link">Re-link</a>
+                <button class="btn sm btn-relink" onclick="openLinkModal('${a.id}')" title="Re-link">Re-link</button>
               `:`
-                <a class="btn sm btn-connect" href="${getZebuStartUrl(a.id)}" onclick="return checkZebuConnect(event, '${a.id}')">Connect Zebu</a>
+                <button class="btn sm btn-connect" onclick="openLinkModal('${a.id}')">Connect Zebu</button>
               `}
             `:''}
             <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
@@ -603,7 +603,7 @@ V.report = () => {
           ${canEdit() && a.broker === 'Zebu' ? (
             a.link === 'Linked' ? 
               `<button class="btn sm btn-disconnect" style="padding:2px 7px;font-size:10.5px" onclick="unlinkAccount('${a.id}')">Disconnect</button>` :
-              `<a class="btn sm btn-connect" style="padding:2px 7px;font-size:10.5px" href="${getZebuStartUrl(a.id)}" onclick="return checkZebuConnect(event, '${a.id}')">Connect</a>`
+              `<button class="btn sm btn-connect" style="padding:2px 7px;font-size:10.5px" onclick="openLinkModal('${a.id}')">Connect</button>`
           ) : ''}
         </span>
       `).join('')}
@@ -863,9 +863,9 @@ function editAccount(id){
       <div>
         ${a.link === 'Linked' ? `
           <button class="btn sm btn-disconnect" type="button" onclick="unlinkAccount('${a.id}')">Disconnect</button>
-          <a class="btn sm btn-relink" href="${getZebuStartUrl(a.id)}" onclick="return checkZebuConnect(event, '${a.id}')" style="margin-left:6px">Re-link</a>
+          <button class="btn sm btn-relink" type="button" onclick="openLinkModal('${a.id}')" style="margin-left:6px">Re-link</button>
         ` : `
-          <a class="btn sm btn-connect" href="${getZebuStartUrl(a.id)}" onclick="return checkZebuConnect(event, '${a.id}')">🔐 Connect Zebu</a>
+          <button class="btn sm btn-connect" type="button" onclick="openLinkModal('${a.id}')">🔐 Connect Zebu</button>
         `}
       </div>
     </div>
@@ -947,7 +947,31 @@ function linkZebu(id){
 }
 
 function openLinkModal(id){
-  linkZebu(id);
+  const a = account(id);
+  if(!a){ toast('Account not found'); return; }
+  const uid = a.zebu_client_id || a.zebu_uid || a.id;
+  const startUrl = getZebuStartUrl(a.id);
+  modal(`
+    <div style="font-weight:700;font-size:16px;margin-bottom:6px">🔗 Connect ${esc(a.name)} to Zebu</div>
+    <div class="muted" style="font-size:12px;margin-bottom:14px">Client ID: <code style="color:#38bdf8">${esc(uid)}</code> · Proxy: <b style="color:${a.proxy_url?'#4ade80':'#94a3b8'}">${a.proxy_url ? '103.72.102.168 (Dedicated Proxy)' : 'Direct IP'}</b></div>
+
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:600;font-size:13px;color:#38bdf8;margin-bottom:4px">Method 1: One-Click Browser Authorization</div>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">Opens Zebu login in a new tab. Log into Zebu as <b>${esc(uid)}</b> and click <b>Authorize</b>:</div>
+      <a class="btn pri" href="${startUrl}" target="_blank" style="display:inline-block;text-decoration:none;padding:8px 16px;font-weight:600;border-radius:6px">🚀 Open Zebu Authorization</a>
+    </div>
+
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:600;font-size:13px;color:#38bdf8;margin-bottom:4px">Method 2: Paste Redirect URL or Code (Fail-safe)</div>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:8px">If the page circles or doesn't redirect automatically, copy the URL from your browser address bar after logging in, paste it below, and click Connect:</div>
+      <input type="text" id="manual_code_input" placeholder="Paste full redirect URL or code here..." style="width:100%;box-sizing:border-box;padding:8px 10px;background:#1e293b;border:1px solid #475569;border-radius:6px;color:#fff;font-size:12px;margin-bottom:10px">
+      <button class="btn" id="btnManualConnect" onclick="submitManualCode('${a.id}')" style="font-weight:600">Connect Account</button>
+    </div>
+
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn" onclick="closeModal()">Close</button>
+    </div>
+  `);
 }
 
 function copyLink(url){
@@ -959,9 +983,9 @@ function copyLink(url){
 }
 
 async function submitManualCode(aid){
-  const code = (val('link_code_input') || '').trim();
+  const code = (val('manual_code_input') || '').trim();
   if(!code){ toast('Please paste the redirect URL or code first'); return; }
-  const btn = document.getElementById('btnSubmitCode');
+  const btn = document.getElementById('btnManualConnect');
   if(btn){ btn.disabled = true; btn.textContent = 'Connecting...'; }
   try {
     const res = await API.saveAccountToken(aid, code);
