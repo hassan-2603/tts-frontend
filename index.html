@@ -301,7 +301,7 @@ function tradePnl(t){
   }
   const dir = t.side==='SELL'?-1:1;
   const q = (t.qty && t.qty > 0) ? t.qty : (t.lots * t.lotSize);
-  return (t.exit - t.entry) * q * dir - (t.charges||0);
+  return (t.exit - t.entry) * q * dir;
 }
 function grossPnl(t){
   if(t.pnl !== undefined && t.pnl !== null && !isNaN(t.pnl)) {
