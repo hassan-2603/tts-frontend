@@ -365,7 +365,7 @@ function metrics(trades, capital){
   const {byTrade}=chk();
   const pn=T.map(tradePnl), wins=pn.filter(x=>x>0), loss=pn.filter(x=>x<=0);
   const sw=wins.reduce((a,b)=>a+b,0), sl=-loss.reduce((a,b)=>a+b,0);
-  const days={}; T.forEach((t,i)=>{ const d = t.exitDate || t.date; days[d]=(days[d]||0)+pn[i]; });
+  const days={}; T.forEach((t,i)=>{ if(!t.open && (t.exitDate || t.date)){ const d = t.exitDate || t.date; days[d]=(days[d]||0)+pn[i]; } });
   const dk=Object.keys(days).sort();
   let cum=0,peak=0,mdd=0,mddDay=null; const series=[], dd=[];
   dk.forEach(d=>{ cum+=days[d]; peak=Math.max(peak,cum); const x=cum-peak; if(x<mdd){mdd=x;mddDay=d;} series.push(cum); dd.push(x); });
@@ -432,13 +432,14 @@ function tradesOf(id, from, to){
         // 1. Unclosed trades (open positions) are NOT removed - they stay on the trade report
         if(t.open) return true;
         // 2. Closed trades are removed from Today's report once their day passes (saved in the calendar)
-        return (t.exitDate === TODAY) || (t.date === TODAY);
+        return (t.exitDate === TODAY) || (!t.exitDate && t.date === TODAY);
       }
-      return (t.date === from) || (t.exitDate === from);
+      return !t.open && ((t.exitDate === from) || (!t.exitDate && t.date === from));
     }
     const tradeDay = t.exitDate || t.date;
-    const matchFrom = !from || tradeDay >= from || t.date >= from;
-    const matchTo = !to || tradeDay <= to || t.date <= to;
+    const matchFrom = !from || tradeDay >= from;
+    const matchTo = !to || tradeDay <= to;
+    if(to && to < TODAY && t.open) return false;
     return matchFrom && matchTo;
   });
 }
@@ -759,9 +760,8 @@ V.report = () => {
   const closedTr = tr.filter(x => !x.open);
   const openTr = tr.filter(x => x.open);
   const closedPnl = closedTr.reduce((s, x) => s + tradePnl(x), 0);
-  const isTargetAcc = (t.id === '47000S19' || t.id === 'AC-01' || (tAccounts && tAccounts.some(a => a.zebu_uid === '47000S19' || a.id === 'AC-01')));
-  const dispTotal = (range === 'today' && !tr.length) ? 0 : ((range === 'today' && isTargetAcc && TODAY === '2026-11-18') ? 97306 : m.total);
-  const dispRealised = (range === 'today' && !tr.length) ? 0 : ((range === 'today' && isTargetAcc && TODAY === '2026-11-18') ? 98676.50 : closedPnl);
+  const dispTotal = m.total;
+  const dispRealised = closedPnl;
 
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
