@@ -280,6 +280,7 @@ const API = {
   deleteTrade:id=>API.req('/trades/'+encodeURIComponent(id),{method:'DELETE'}),
   deleteTradesBulk:ids=>API.req('/trades/delete-bulk',{method:'POST',body:JSON.stringify({ids})}),
   unlinkAccount:id=>API.req('/accounts/'+encodeURIComponent(id)+'/unlink',{method:'POST'}),
+  syncAccount:aid=>API.req('/sync?account='+encodeURIComponent(aid),{method:'POST'}),
   linkAccount:(id)=>API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST',body:JSON.stringify({frontend_url:window.location.origin})}),
   saveAccountToken:(id,token)=>API.req('/accounts/'+encodeURIComponent(id)+'/token',{method:'POST',body:JSON.stringify({token})}),
   saveGroup:g=>API.req('/groups/'+encodeURIComponent(g.id),{method:'PUT',body:JSON.stringify(g)}),
@@ -396,11 +397,19 @@ function trader(id){
   }
   return null;
 }
-function account(id){ return S.accounts.find(a=>a.id===id); }
+function account(id){ return S.accounts.find(a=>a.id===id || a.zebu_uid===id); }
 function tradesOf(id, from, to){
+  const targetAcc = account(id) || S.accounts.find(a => a.zebu_uid === id || a.trader === id);
+  const targetZebuUid = targetAcc ? targetAcc.zebu_uid : null;
+  const targetAid = targetAcc ? targetAcc.id : null;
   return S.trades.filter(t => {
     const acc = account(t.account);
-    const match = (t.trader === id) || (t.account === id) || (acc && (acc.zebu_uid === id || acc.zebu_client_id === id));
+    const match = (t.trader === id) || 
+                  (t.account === id) || 
+                  (targetAid && t.account === targetAid) ||
+                  (targetZebuUid && t.account === targetZebuUid) ||
+                  (targetZebuUid && acc && acc.zebu_uid === targetZebuUid) ||
+                  (acc && (acc.zebu_uid === id || acc.zebu_client_id === id));
     return match && (!from || t.date >= from) && (!to || t.date <= to);
   });
 }
@@ -655,10 +664,30 @@ V.report = () => {
   
   const range = SEL.range || 'today';
   let from, to=TODAY, label;
+  let isNoTodayTrades = false;
+  let latestSessionDate = '';
+  let latestSessionCount = 0;
+
   if(range==='today'){
-    from = TODAY;
-    to = TODAY;
-    label = 'Today (' + fmtDate(TODAY) + ')';
+    const allAcctTrades = tradesOf(t.id);
+    const todayTrades = allAcctTrades.filter(x => x.date === TODAY);
+    if(todayTrades.length > 0){
+      from = TODAY;
+      to = TODAY;
+      label = 'Today (' + fmtDate(TODAY) + ')';
+    } else if(allAcctTrades.length > 0){
+      isNoTodayTrades = true;
+      latestSessionDate = allAcctTrades.map(x => x.date).sort().reverse()[0];
+      const latestTr = allAcctTrades.filter(x => x.date === latestSessionDate);
+      latestSessionCount = latestTr.length;
+      from = latestSessionDate;
+      to = latestSessionDate;
+      label = 'Today (' + fmtDate(TODAY) + ') · Latest: ' + fmtDate(latestSessionDate);
+    } else {
+      from = TODAY;
+      to = TODAY;
+      label = 'Today (' + fmtDate(TODAY) + ')';
+    }
   } else if(range==='test'){
     const w=testWindow(t);
     from=w.from;
@@ -706,6 +735,15 @@ V.report = () => {
     </div>
   ` : '';
 
+  const sessionBanner = isNoTodayTrades && latestSessionDate ? `
+    <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-size:12.5px;color:#93c5fd">
+        ℹ️ <b>No trades placed yet today (${fmtDate(TODAY)})</b>. Displaying latest trading session (${fmtDate(latestSessionDate)}) with <b>${latestSessionCount} trades</b>.
+      </div>
+      <button class="btn sm" onclick="onTraderChange('${t.id}')">🔄 Fetch Live Zebu</button>
+    </div>
+  ` : '';
+
   setTimeout(()=>drawReportCharts(m, tr, range==='today'), 0);
 
   return header(esc(t.name)+' — report card', `${t.id} · ${t.style} · ${t.holding} · ${esc(t.segment)} · ${label}`,
@@ -713,12 +751,13 @@ V.report = () => {
      ${range==='custom'?`<input type="date" id="rFrom" value="${SEL.from}"><input type="date" id="rTo" value="${SEL.to}"><button class="btn sm" onclick="SEL.from=$('#rFrom').value;SEL.to=$('#rTo').value;render()">Go</button>`:''}
      <button class="btn" onclick="exportCSV('report')">Export</button>`) +
   accBar +
+  sessionBanner +
   `<div class="grid k6">
-    ${kpi('Total P&L', inrS(m.total), (range==='today' ? (m.n + ' trades today') : (m.n + ' trades')), cls(m.total))}
+    ${kpi('Total P&L', inrS(m.total), (range==='today' ? (isNoTodayTrades ? (m.n + ' trades (' + fmtDate(latestSessionDate) + ')') : (m.n + ' trades today')) : (m.n + ' trades')), cls(m.total))}
     ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
     ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
     ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
-    ${kpi(range==='today' ? 'Trades today' : 'Trades / day', range==='today' ? String(m.n) : m.tpd.toFixed(1), range==='today' ? fmtDate(TODAY) : (m.days+' trading days'))}
+    ${kpi(range==='today' ? (isNoTodayTrades ? 'Trades (' + fmtDate(latestSessionDate) + ')' : 'Trades today') : 'Trades / day', range==='today' ? String(m.n) : m.tpd.toFixed(1), range==='today' ? (isNoTodayTrades ? fmtDate(latestSessionDate) : fmtDate(TODAY)) : (m.days+' trading days'))}
     ${kpi('Rule-follow', pct(m.ruleFollow), m.flagsN+' flags · '+m.high+' high', m.ruleFollow>=S.settings.pass.ruleFollow?'pos':'amb')}
   </div>
   <div class="grid c21" style="margin-top:14px">
@@ -1093,10 +1132,18 @@ function saveAccount(id){
   const o = id ? account(id) : null;
   if(o) Object.assign(o, a); else S.accounts.push(a);
   save();
-  liveCall(() => API.saveAccount(a));
+  SEL.trader = a.trader || a.zebu_uid || a.id;
   closeModal();
   render();
-  toast('Account saved');
+  toast('Account saved. Fetching live details...');
+  liveCall(async () => {
+    await API.saveAccount(a);
+    if(a.broker === 'Zebu') {
+      try {
+        await API.syncAccount(a.id);
+      } catch(e){}
+    }
+  });
 }
 function linkPill(a){
   const isLinked = a.link === 'Linked';
@@ -1491,9 +1538,31 @@ function render(){
   $('#root').innerHTML = shell(V[VIEW]());
   bind();
 }
+async function onTraderChange(targetId){
+  SEL.trader = targetId;
+  render();
+  if(LIVE){
+    try {
+      const t = trader(targetId);
+      const acc = account(targetId) || S.accounts.find(a => a.zebu_uid === targetId || a.trader === targetId);
+      const aid = acc ? acc.id : targetId;
+      toast('Fetching live details for ' + (t?.name || targetId) + ' from Zebu...');
+      const res = await API.syncAccount(aid);
+      await API.syncAll();
+      render();
+      if(res && res.result === 'expired'){
+        toast('⚠️ Zebu session expired for today — click Connect to re-authorize');
+      } else if(res && res.result && res.result.startsWith('ok')){
+        toast('Live sync complete: ' + res.result);
+      }
+    } catch(e){
+      console.warn('Live fetch notice:', e);
+    }
+  }
+}
 function bind(){
   const on=(id,ev,fn)=>{ const e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
-  on('selTr','change',e=>{ SEL.trader=e.target.value; render(); });
+  on('selTr','change',e=>{ onTraderChange(e.target.value); });
   on('ffTr','change',e=>{ SEL.flagFilter.trader=e.target.value; render(); });
   on('ffLv','change',e=>{ SEL.flagFilter.level=e.target.value; render(); });
   on('gSel','change',e=>{ SEL.group=e.target.value; render(); });
