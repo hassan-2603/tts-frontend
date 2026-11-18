@@ -255,6 +255,7 @@ function save(){ if(!LIVE){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }
 function canEdit(){ return ROLE==='admin'; }
 
 // ---------- API adapter (live deployment) ----------
+let DAILY_REPORTS = [], VIOLATIONS = [];
 const API = {
   async req(path, opt={}){
     const r = await fetch('/api'+path, {...opt, headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(opt.headers||{})}});
@@ -263,13 +264,17 @@ const API = {
     return r.json();
   },
   async syncAll(){
-    const [traders,accounts,rules,trades,groups,settings,ruleLog,status] = await Promise.all([
+    const [traders,accounts,rules,trades,groups,settings,ruleLog,status,dailyReports,violations] = await Promise.all([
       this.req('/traders'), this.req('/accounts'), this.req('/rules'), this.req('/trades?from='+addDays(TODAY,-180)), this.req('/groups'),
-      this.req('/settings'), this.req('/rulelog'), this.req('/status')]);
+      this.req('/settings'), this.req('/rulelog'), this.req('/status'),
+      this.req('/daily-reports').catch(()=>[]), this.req('/violations').catch(()=>[])]);
     Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status;
+    DAILY_REPORTS = Array.isArray(dailyReports) ? dailyReports : [];
+    VIOLATIONS = Array.isArray(violations) ? violations : [];
     if(ROLE==='admin'){ try{ USERS=await this.req('/users'); }catch(e){} }
-    if(traders && traders.length && !traders.some(t=>t.id===SEL.trader)){
-      SEL.trader = traders[0].id;
+    const validIds = new Set([...(traders||[]).map(t=>t.id), ...(accounts||[]).map(a=>a.id), ...(accounts||[]).map(a=>a.zebu_uid).filter(Boolean)]);
+    if(validIds.size && !validIds.has(SEL.trader)){
+      SEL.trader = (traders && traders[0]?.id) || (accounts && accounts[0]?.id);
     }
     invalidate();
   },
@@ -297,20 +302,25 @@ async function detectLive(){
 
 // ---------- core calculations ----------
 function tradePnl(t){
+  if(!t.open && t.realized_pnl !== undefined && t.realized_pnl !== null && !isNaN(t.realized_pnl)) {
+    return Number(t.realized_pnl);
+  }
   if(t.pnl !== undefined && t.pnl !== null && !isNaN(t.pnl)) {
     return Number(t.pnl);
   }
+  if(t.exit === undefined || t.exit === null || t.entry === undefined || t.entry === null) return 0;
   const dir = t.side==='SELL'?-1:1;
   const q = (t.qty && t.qty > 0) ? t.qty : (t.lots * t.lotSize);
-  return (t.exit - t.entry) * q * dir;
+  return Math.round((t.exit - t.entry) * q * dir * 100) / 100;
+}
+function netTradePnl(t){
+  if(t.net_pnl !== undefined && t.net_pnl !== null && !isNaN(t.net_pnl)) {
+    return Number(t.net_pnl);
+  }
+  return Math.round((tradePnl(t) - Number(t.charges || 0)) * 100) / 100;
 }
 function grossPnl(t){
-  if(t.pnl !== undefined && t.pnl !== null && !isNaN(t.pnl)) {
-    return Number(t.pnl);
-  }
-  const dir = t.side==='SELL'?-1:1;
-  const q = (t.qty && t.qty > 0) ? t.qty : (t.lots * t.lotSize);
-  return (t.exit - t.entry) * q * dir;
+  return tradePnl(t);
 }
 function moneyness(t, step){ // +n = n strikes ITM, -n = n strikes OTM, 0 = ATM
   if(!t.spot) return {atm:null,d:NaN};
@@ -321,55 +331,118 @@ function moneyness(t, step){ // +n = n strikes ITM, -n = n strikes OTM, 0 = ATM
 function mLabel(d){ if(isNaN(d)) return 'spot n/a'; return d===0?'ATM': d>0? d+' ITM' : (-d)+' OTM'; }
 function expectedStrike(t, r, step){ if(!t.spot) return '—'; const atm=Math.round(t.spot/step)*step; const n = r.strikeMode==='ATM'?0:r.strikeDist; const sign = r.strikeMode==='ITM'?1:(r.strikeMode==='OTM'?-1:0); return t.opt==='CE'? atm - sign*n*step : atm + sign*n*step; }
 
-// The rule checker: compares each trade with the trader's own rules
+// The rule checker: compares each trade with the account/trader's own rules
 function checkAll(){
-  const step=S.settings.strikeStep, flags=[], byTrade={};
+  const step=S.settings.strikeStep, flags=[], byTrade={}, unevaluatedByTrade={};
   const groups = {};
-  S.trades.forEach(t=>{ (groups[t.trader+'|'+t.date] ||= []).push(t); });
+  S.trades.forEach(t=>{
+    const owner = t.account || t.trader;
+    (groups[owner+'|'+t.date] ||= []).push(t);
+  });
   Object.values(groups).forEach(list=>{
-    list.sort((a,b)=>a.time.localeCompare(b.time));
-    const r = S.rules[list[0].trader] || DEFAULT_RULES;
+    list.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+    const sample = list[0];
+    const r = S.rules[sample.account] || S.rules[sample.trader] || DEFAULT_RULES;
     let dayPnl=0, stopHit=false;
-    list.forEach((t,i)=>{
-      const f=[]; const add=(rule,did,level)=>f.push({rule,did,level});
-      if(r.instrument!=='ANY' && t.symbol!==r.instrument) add('Instrument: '+r.instrument+' only', 'Traded '+t.symbol, 'High');
-      if(r.strikeMode!=='ANY' && t.spot){
-        const m=moneyness(t,step), want = r.strikeMode==='ATM'?0:(r.strikeMode==='ITM'?r.strikeDist:-r.strikeDist);
-        if(m.d!==want) add('Strike: '+(r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode)+' only',
-          `Bought ${t.strike} ${t.opt} = ${mLabel(m.d)} (spot ${Math.round(t.spot).toLocaleString('en-IN')}, right strike ${expectedStrike(t,r,step)} ${t.opt})`, 'High');
+    const seenEntries=[];
+    list.forEach((t)=>{
+      const f=[], u=[];
+      const isHist = Boolean(t.is_finalized) || (t.date < TODAY && !t.open);
+      const status = isHist ? 'HISTORICAL' : 'ACTIVE';
+      const add=(rule,did,level,cond='',obs='')=>f.push({rule,did,level,condition:cond||rule,observed:obs||did,status});
+      if(r.instrument!=='ANY' && t.symbol!==r.instrument) add('Instrument: '+r.instrument+' only', 'Traded '+t.symbol, 'High', 'instrument == '+r.instrument, t.symbol);
+      if(r.strikeMode!=='ANY' && (t.opt==='CE'||t.opt==='PE')){
+        if(t.spot){
+          const m=moneyness(t,step), want = r.strikeMode==='ATM'?0:(r.strikeMode==='ITM'?r.strikeDist:-r.strikeDist);
+          if(m.d!==want) add('Strike: '+(r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode)+' only',
+            `Bought ${t.strike} ${t.opt} = ${mLabel(m.d)} (spot ${Math.round(t.spot).toLocaleString('en-IN')}, right strike ${expectedStrike(t,r,step)} ${t.opt})`, 'High');
+        } else {
+          u.push({rule:'Strike: '+(r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode)+' only', reason:'Spot price unavailable from broker', status:'UNEVALUATED'});
+        }
       }
       if(r.side!=='ANY' && t.side!==r.side) add(r.side==='BUY'?'Option buying only':'Option selling only', t.side+' trade', 'High');
-      if(r.product==='MIS' && (t.product==='NRML' || t.exitDate!==t.date)) add('Intraday only', 'Carried position overnight (exit '+fmtDate(t.exitDate)+')', 'High');
+      const exitD = t.exitDate || t.date;
+      const carriedOver = (exitD !== t.date) || (t.open && t.date < TODAY);
+      if(r.product==='MIS' && (t.product==='NRML' || carriedOver)) add('Intraday only', 'Carried position overnight (exit '+(t.open?'OPEN':fmtDate(exitD))+')', 'High');
       if(r.timeFrom && toMin(t.time)!==null && toMin(r.timeFrom)!==null && toMin(t.time)<toMin(r.timeFrom)) add('Entry from '+r.timeFrom, 'Entry at '+t.time, 'Medium');
       if(r.timeTo && toMin(t.time)!==null && toMin(r.timeTo)!==null && toMin(t.time)>toMin(r.timeTo)) add('Entry till '+r.timeTo, 'New entry at '+t.time, 'Medium');
-      if(r.maxTradesDay && i>=r.maxTradesDay) add('Max '+r.maxTradesDay+' trades / day', 'Took trade no. '+(i+1), 'Medium');
+      const entryKey = t.parent_trade_id || t.entry_order_id || t.id;
+      if(!seenEntries.includes(entryKey)) seenEntries.push(entryKey);
+      const seqIdx = seenEntries.indexOf(entryKey);
+      if(r.maxTradesDay && seqIdx>=r.maxTradesDay) add('Max '+r.maxTradesDay+' trades / day', 'Took trade no. '+(seqIdx+1), 'Medium');
       if(r.maxLots && t.lots>r.maxLots) add('Max '+r.maxLots+' lots / trade', 'Took '+t.lots+' lots', 'Medium');
-      const g=grossPnl(t);
-      if(r.slPerLot && g<0 && -g/t.lots > r.slPerLot) add('SL max '+inr(r.slPerLot)+' / lot', 'Lost '+inr(-g/t.lots)+' per lot', 'High');
-      if(r.dailyLoss && stopHit) add('Stop after '+inr(r.dailyLoss)+' day loss', 'Kept trading after loss limit hit', 'High');
+      const hasPnl = !(t.open && (t.pnl === null || t.pnl === undefined));
+      if(hasPnl){
+        const g=grossPnl(t);
+        if(r.slPerLot && g<0 && t.lots>0 && -g/t.lots > r.slPerLot) add('SL max '+inr(r.slPerLot)+' / lot', 'Lost '+inr(-g/t.lots)+' per lot', 'High');
+        if(r.dailyLoss && stopHit) add('Stop after '+inr(r.dailyLoss)+' day loss', 'Kept trading after loss limit hit', 'High');
+        dayPnl += g; if(r.dailyLoss && dayPnl <= -r.dailyLoss) stopHit=true;
+      } else if(r.slPerLot) {
+        u.push({rule:'SL max '+inr(r.slPerLot)+' / lot', reason:'Live LTP unavailable from broker', status:'UNEVALUATED'});
+      }
       if(r.source!=='ANY' && t.source!==r.source) add(r.source+' trades only', 'Trade placed '+t.source, 'Low');
-      if(r.hedge && !t.hedged) add('Hedge required', 'No hedge leg', 'Medium');
+      if(String(r.hedge)==='true' && !t.hedged) add('Hedge required', 'No hedge leg', 'Medium');
       if(r.expiry!=='ANY' && t.expiryType && t.expiryType!==r.expiry) add(r.expiry+' expiry only', 'Traded '+t.expiryType+' expiry', 'Low');
-      dayPnl += tradePnl(t); if(r.dailyLoss && dayPnl <= -r.dailyLoss) stopHit=true;
-      byTrade[t.id]=f; f.forEach(x=>flags.push({...x, trade:t}));
+      byTrade[t.id]=f;
+      if(u.length) unevaluatedByTrade[t.id]=u;
+      f.forEach(x=>flags.push({...x, trade:t}));
     });
   });
   flags.sort((a,b)=> (b.trade.date+b.trade.time).localeCompare(a.trade.date+a.trade.time));
-  return {flags, byTrade};
+  return {flags, byTrade, unevaluatedByTrade};
 }
 let _chk=null; function chk(){ return _chk ||= checkAll(); }
 function invalidate(){ _chk=null; }
 
-function metrics(trades, capital){
+function metrics(trades, capital, accountId=null){
   const T=[...trades].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   const {byTrade}=chk();
-  const pn=T.map(tradePnl), wins=pn.filter(x=>x>0), loss=pn.filter(x=>x<=0);
+  const pn=T.map(tradePnl), netPn=T.map(netTradePnl);
+  const closedT=T.filter(t=>!t.open), closedPn=closedT.map(tradePnl);
+  const wins=closedPn.filter(x=>x>0), loss=closedPn.filter(x=>x<=0);
   const sw=wins.reduce((a,b)=>a+b,0), sl=-loss.reduce((a,b)=>a+b,0);
-  const days={}; T.forEach((t,i)=>{ if(!t.open && (t.exitDate || t.date)){ const d = t.exitDate || t.date; days[d]=(days[d]||0)+pn[i]; } });
+  const days={}, dayMeta={};
+  // Populate from finalized daily reports first if available for this account
+  if(LIVE && accountId && DAILY_REPORTS.length){
+    const accObj = account(accountId);
+    const matchIds = new Set([accountId, accObj?.id, accObj?.zebu_uid, accObj?.trader].filter(Boolean));
+    DAILY_REPORTS.filter(r => matchIds.has(r.account) || matchIds.has(r.trader)).forEach(r => {
+      if(r.status === 'FINALIZED' || r.status === 'ARCHIVED'){
+        if(r.closed_trades > 0 || r.realized_pnl !== 0){
+          days[r.date] = Number(r.realized_pnl || 0);
+          dayMeta[r.date] = {
+            realized_pnl: Number(r.realized_pnl || 0),
+            net_pnl: Number(r.net_pnl || 0),
+            charges: Number(r.charges || 0),
+            trades: Number(r.closed_trades || 0),
+            wins: Number(r.winning_trades || 0),
+            losses: Number(r.losing_trades || 0),
+            status: r.status,
+            finalized_at: r.finalized_at,
+          };
+        }
+      }
+    });
+  }
+  // Reconcile/populate from closed trades for any date not already locked in dayMeta
+  T.forEach((t,i)=>{
+    if(!t.open && (t.exitDate || t.date)){
+      const d = t.exitDate || t.date;
+      if(!dayMeta[d] || !dayMeta[d].finalized_at){
+        days[d] = Math.round(((days[d]||0) + pn[i]) * 100) / 100;
+        const dm = (dayMeta[d] ||= {realized_pnl:0, net_pnl:0, charges:0, trades:0, wins:0, losses:0, status: t.is_finalized?'FINALIZED':'LIVE'});
+        dm.realized_pnl = Math.round((dm.realized_pnl + pn[i]) * 100) / 100;
+        dm.charges = Math.round((dm.charges + Number(t.charges||0)) * 100) / 100;
+        dm.net_pnl = Math.round((dm.realized_pnl - dm.charges) * 100) / 100;
+        dm.trades += 1;
+        if(pn[i] > 0) dm.wins += 1; else dm.losses += 1;
+      }
+    }
+  });
   const dk=Object.keys(days).sort();
   let cum=0,peak=0,mdd=0,mddDay=null; const series=[], dd=[];
-  dk.forEach(d=>{ cum+=days[d]; peak=Math.max(peak,cum); const x=cum-peak; if(x<mdd){mdd=x;mddDay=d;} series.push(cum); dd.push(x); });
-  let streak=0,maxStreak=0; pn.forEach(x=>{ if(x<=0){streak++;maxStreak=Math.max(maxStreak,streak);} else streak=0; });
+  dk.forEach(d=>{ cum=Math.round((cum+days[d])*100)/100; peak=Math.max(peak,cum); const x=cum-peak; if(x<mdd){mdd=x;mddDay=d;} series.push(cum); dd.push(x); });
+  let streak=0,maxStreak=0; closedPn.forEach(x=>{ if(x<=0){streak++;maxStreak=Math.max(maxStreak,streak);} else streak=0; });
   const holds=T.filter(t=>t.exitDate===t.date&&t.exitTime&&t.exitTime!=='OPEN').map(t=>{
     const e=toMin(t.exitTime), s=toMin(t.time);
     return (e!==null && s!==null && e>=s)?(e-s):null;
@@ -378,18 +451,21 @@ function metrics(trades, capital){
   const high=T.reduce((a,t)=>a+(byTrade[t.id]||[]).filter(f=>f.level==='High').length,0);
   const flagsN=T.reduce((a,t)=>a+(byTrade[t.id]||[]).length,0);
   const dv=dk.map(d=>days[d]);
+  const totalPnl = Math.round(pn.reduce((a,b)=>a+b,0) * 100) / 100;
+  const totalCharges = Math.round(T.reduce((a,t)=>a+(t.charges||0),0) * 100) / 100;
+  const totalNetPnl = Math.round((totalPnl - totalCharges) * 100) / 100;
   return {
-    n:T.length, total:pn.reduce((a,b)=>a+b,0), accuracy: T.length? wins.length/T.length*100 : NaN,
+    n:T.length, total:totalPnl, netTotal:totalNetPnl, accuracy: closedT.length? wins.length/closedT.length*100 : NaN,
     rr: (wins.length&&loss.length)? (sw/wins.length)/(sl/loss.length) : NaN,
     pf: sl? sw/sl : (sw?Infinity:NaN), mdd:-mdd, mddPct: capital? -mdd/capital*100 : NaN, mddDay,
     tpd: dk.length? T.length/dk.length : 0, days:dk.length,
-    intraday: T.length? T.filter(t=>t.product!=='NRML'&&t.exitDate===t.date).length/T.length*100 : NaN,
+    intraday: T.length? T.filter(t=>t.product!=='NRML'&&(t.exitDate||t.date)===t.date).length/T.length*100 : NaN,
     manual: T.length? T.filter(t=>t.source==='Manual').length/T.length*100 : NaN,
     ruleFollow: T.length? clean/T.length*100 : NaN, high, flagsN,
     best: dv.length? Math.max(...dv):0, worst: dv.length? Math.min(...dv):0,
     bestDay: dk[dv.indexOf(Math.max(...dv))], worstDay: dk[dv.indexOf(Math.min(...dv))],
     streak:maxStreak, hold: holds.length? holds.reduce((a,b)=>a+b,0)/holds.length : NaN,
-    charges: T.reduce((a,t)=>a+(t.charges||0),0), dayKeys:dk, dayVals:dv, series, dd, grossWin:sw, grossLoss:sl
+    charges: totalCharges, dayKeys:dk, dayVals:dv, dayMeta, series, dd, grossWin:sw, grossLoss:sl
   };
 }
 function trader(id){
@@ -401,41 +477,49 @@ function trader(id){
     return {
       id: id,
       name: acc.name ? `${acc.name} (${uid})` : uid,
-      ra: 'Arshiyan',
+      ra: acc.trader || '—',
       style: 'Manual',
       holding: 'Intraday',
       segment: 'Nifty options',
-      testCapital: 300000,
+      testCapital: 0,
       status: acc.link==='Linked'?'Live':'Testing',
-      start: '2026-11-14'
+      start: TODAY
     };
   }
   return null;
 }
 function account(id){ return S.accounts.find(a=>a.id===id || a.zebu_uid===id); }
+function belongsToSelection(t, id){
+  if(!id) return true;
+  // 1. Direct match on account ID
+  const directAcc = S.accounts.find(a => a.id === id);
+  if(directAcc){
+    return t.account === directAcc.id;
+  }
+  // 2. Match by zebu_uid if user selected a Zebu UID in the dropdown
+  const uidAccs = S.accounts.filter(a => a.zebu_uid && a.zebu_uid === id);
+  if(uidAccs.length === 1){
+    return t.account === uidAccs[0].id || t.account === id || t.trader === id;
+  }
+  // 3. Match by trader ID (all accounts assigned to this trader)
+  const traderAccIds = new Set(S.accounts.filter(a => a.trader === id).map(a => a.id));
+  return t.trader === id || t.account === id || traderAccIds.has(t.account);
+}
 function tradesOf(id, from, to){
-  const targetAcc = account(id) || S.accounts.find(a => a.zebu_uid === id || a.trader === id);
-  const targetZebuUid = targetAcc ? targetAcc.zebu_uid : null;
-  const targetAid = targetAcc ? targetAcc.id : null;
   return S.trades.filter(t => {
-    const acc = account(t.account);
-    const match = (t.trader === id) || 
-                  (t.account === id) || 
-                  (targetAid && t.account === targetAid) ||
-                  (targetZebuUid && t.account === targetZebuUid) ||
-                  (targetZebuUid && acc && acc.zebu_uid === targetZebuUid) ||
-                  (acc && (acc.zebu_uid === id || acc.zebu_client_id === id));
-    if(!match) return false;
+    if(!belongsToSelection(t, id)) return false;
     if(from && to && from === to){
       if(from === TODAY){
         // At 12 midnight:
-        // 1. Unclosed trades (open positions) are NOT removed - they stay on the trade report
+        // 1. Unclosed trades (overnight open positions) remain visible in the active Today Trader Report
         if(t.open) return true;
-        // 2. Closed trades are removed from Today's report once their day passes (saved in the calendar)
+        // 2. Archived / past days' closed trades are removed from Today's report and shown in the Daily P&L Calendar
+        if(t.is_archived && (t.exitDate || t.date) < TODAY) return false;
         return (t.exitDate === TODAY) || (!t.exitDate && t.date === TODAY);
       }
       return !t.open && ((t.exitDate === from) || (!t.exitDate && t.date === from));
     }
+    if(t.open && (!to || to >= TODAY)) return true;
     const tradeDay = t.exitDate || t.date;
     const matchFrom = !from || tradeDay >= from;
     const matchTo = !to || tradeDay <= to;
@@ -545,8 +629,13 @@ V.overview = () => {
 };
 function flagTable(list, showDate=true){
   if(!list.length) return `<div class="muted" style="padding:14px">No red flags. All rules followed ✓</div>`;
-  return `<div class="tbl-wrap"><table><tr>${showDate?'<th>Date</th>':''}<th>Time</th><th>Trader</th><th>Rule broken</th><th>What he actually did</th><th>Level</th></tr>
-  ${list.map(f=>`<tr class="click" onclick="openTrade('${f.trade.id}')">${showDate?`<td class="mono">${fmtDate(f.trade.date)}</td>`:''}<td class="mono">${f.trade.time}</td><td>${esc(trader(f.trade.trader)?.name||f.trade.trader)}</td><td>${esc(f.rule)}</td><td class="flagtxt">${esc(f.did)}</td><td>${levelPill(f.level)}</td></tr>`).join('')}</table></div>`;
+  return `<div class="tbl-wrap"><table><tr>${showDate?'<th>Date</th>':''}<th>Time</th><th>Trader / Account</th><th>Rule broken</th><th>What he actually did (Reason)</th><th>Status</th><th>Level</th></tr>
+  ${list.map(f=>{
+    const st = f.status || (f.trade.is_finalized || (f.trade.date < TODAY && !f.trade.open) ? 'HISTORICAL' : 'ACTIVE');
+    const stPill = st==='ACTIVE'?'<span class="pill p-high">ACTIVE</span>':st==='RESOLVED'?'<span class="pill p-pass">RESOLVED</span>':st==='UNEVALUATED'?'<span class="pill p-watch">MISSING DATA</span>':'<span class="pill p-low">HISTORICAL</span>';
+    const accLabel = f.trade.account ? ` <span class="muted mono" style="font-size:11px">(${esc(f.trade.account)})</span>` : '';
+    return `<tr class="click" onclick="openTrade('${f.trade.id}')">${showDate?`<td class="mono">${fmtDate(f.trade.date)}</td>`:''}<td class="mono">${f.trade.time}</td><td>${esc(trader(f.trade.trader)?.name||f.trade.trader)}${accLabel}</td><td>${esc(f.rule)}</td><td class="flagtxt">${esc(f.did)}</td><td>${stPill}</td><td>${levelPill(f.level)}</td></tr>`;
+  }).join('')}</table></div>`;
 }
 
 V.traders = () => header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
@@ -650,7 +739,7 @@ function ruleSummary(r){ return [
 
 V.trades = () => {
   const F=SEL.tradeFilter, {byTrade}=chk();
-  let list=S.trades.filter(t=>(!F.trader||t.trader===F.trader)&&(!F.from||t.date>=F.from)&&(!F.to||t.date<=F.to));
+  let list=S.trades.filter(t=>(!F.trader||belongsToSelection(t,F.trader))&&(!F.from||t.date>=F.from)&&(!F.to||t.date<=F.to));
   if(F.flag==='flag') list=list.filter(t=>byTrade[t.id]?.length); if(F.flag==='ok') list=list.filter(t=>!byTrade[t.id]?.length);
   list.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+tradePnl(t),0);
@@ -666,21 +755,21 @@ V.trades = () => {
     <th>Date</th><th>Time</th><th>Trader</th><th>Account</th><th>Symbol</th><th>Strike</th><th>Spot</th><th>Side</th><th class="n">Lots</th><th class="n">Entry</th><th class="n">Exit</th><th>Product</th><th>Source</th><th class="n">Charges</th><th class="n">Net P&L</th><th>Check</th>
     ${canEdit()?`<th></th>`:''}
   </tr>
-  ${shown.map(t=>{ const f=byTrade[t.id]||[], p=tradePnl(t), m=moneyness(t,S.settings.strikeStep), isSel=SELECTED_TRADE_IDS.has(t.id); return `<tr class="click" onclick="openTrade('${t.id}')">
+  ${shown.map(t=>{ const f=byTrade[t.id]||[], hasPnl=!(t.open&&(t.pnl===null||t.pnl===undefined)), p=hasPnl?tradePnl(t):null, m=moneyness(t,S.settings.strikeStep), isSel=SELECTED_TRADE_IDS.has(t.id); return `<tr class="click" onclick="openTrade('${t.id}')">
     ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" class="trade-chk" value="${t.id}" ${isSel?'checked':''} onchange="onTradeChkChange(this)"></td>`:''}
     <td class="mono">${fmtDate(t.date)}</td><td class="mono">${t.time}</td><td>${esc(trader(t.trader)?.name||t.trader)}</td><td>${esc(account(t.account)?.name||t.account)}</td>
-    <td>${t.symbol}</td><td class="mono">${t.strike} ${t.opt} <span class="muted" style="font-size:11px">${mLabel(m.d)}</span></td><td class="mono">${t.spot?Math.round(t.spot).toLocaleString('en-IN'):'—'}</td><td>${t.side}</td><td class="n">${t.lots}</td>
-    <td class="n">${t.entry.toFixed(2)}</td><td class="n">${t.open?'<span class="pill p-test">OPEN</span> '+t.exit.toFixed(2):t.exit.toFixed(2)}</td><td>${t.product==='NRML'||t.exitDate!==t.date?'NRML (CF)':'MIS'}</td><td>${t.source}</td><td class="n">${t.chargesEstimated?'~':''}${inr(t.charges)}</td>
-    <td class="n ${cls(p)}">${inr(p)}</td><td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td>
+    <td>${t.symbol}</td><td class="mono">${t.strike||''} ${t.opt||''} <span class="muted" style="font-size:11px">${mLabel(m.d)}</span></td><td class="mono">${t.spot?Math.round(t.spot).toLocaleString('en-IN'):'—'}</td><td>${t.side}</td><td class="n">${t.lots}</td>
+    <td class="n">${Number(t.entry||0).toFixed(2)}</td><td class="n">${t.open?'<span class="pill p-test">OPEN</span> '+(t.exit!=null?Number(t.exit).toFixed(2):'—'):Number(t.exit||0).toFixed(2)}</td><td>${t.product==='NRML'||(t.exitDate&&t.exitDate!==t.date)?'NRML (CF)':'MIS'}</td><td>${t.source}</td><td class="n">${t.chargesEstimated?'~':''}${inr(t.charges)}</td>
+    <td class="n ${p!==null?cls(p):'muted'}">${p!==null?inr(p):'Pending LTP'}</td><td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td>
     ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:right"><button class="btn sm danger" style="padding:2px 7px;font-size:11px;line-height:1" onclick="delTrade('${t.id}')" title="Delete this trade">✕</button></td>`:''}
   </tr>`; }).join('')}
   </table></div></div>`;
 };
 
 V.flags = () => {
-  const F=SEL.flagFilter, {flags}=chk();
+  const F=SEL.flagFilter, {flags, unevaluatedByTrade}=chk();
   const from = F.range==='today'?TODAY : F.range==='week'?addDays(TODAY,-6) : F.range==='month'?TODAY.slice(0,8)+'01' : '';
-  const list=flags.filter(f=>(!F.level||f.level===F.level)&&(!F.trader||f.trade.trader===F.trader)&&(!from||f.trade.date>=from));
+  const list=flags.filter(f=>(!F.level||f.level===F.level)&&(!F.trader||belongsToSelection(f.trade,F.trader))&&(!from||f.trade.date>=from));
   const today=flags.filter(f=>f.trade.date===TODAY), all=metrics(S.trades);
   const byRule={}; list.forEach(f=>{ const k=f.rule.split(':')[0].replace(/\d+/g,'#'); byRule[k]=(byRule[k]||0)+1; });
   return header('Red flags','Every broken rule, in plain words', `<button class="btn" onclick="exportCSV('flags')">Export CSV</button>`) +
@@ -730,16 +819,16 @@ V.report = () => {
 
   // Today / selected range trades for main heading, KPIs, and graph
   const tr = tradesOf(t.id, from, to);
-  const m = metrics(tr, t.testCapital);
+  const m = metrics(tr, t.testCapital, t.id);
   const {byTrade} = chk();
 
-  // Full metrics for this account across all trades for "All the numbers" box
+  // Full metrics for this account across all trades for "All the numbers" box and Daily P&L Calendar
   const trAll = tradesOf(t.id);
-  const mAll = metrics(trAll, t.testCapital);
+  const mAll = metrics(trAll, t.testCapital, t.id);
   const sc = scorecard(t);
 
   const fl = tr.flatMap(x=>(byTrade[x.id]||[]).map(f=>({...f,trade:x}))).sort((a,b)=>(b.trade.date+b.trade.time).localeCompare(a.trade.date+a.trade.time));
-  const tAccounts = S.accounts.filter(a => a.trader === t.id || a.id === t.id || a.zebu_uid === t.id);
+  const tAccounts = S.accounts.filter(a => a.id === t.id || a.zebu_uid === t.id || (a.trader === t.id && !S.accounts.some(x => x.id === t.id || x.zebu_uid === t.id)));
   const accBar = tAccounts.length ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;gap:12px">
       <span class="muted" style="font-size:12px">Broker Accounts:</span>
@@ -748,9 +837,9 @@ V.report = () => {
           <b>${esc(a.name)}</b> <span class="muted mono" style="font-size:11px">(${esc(a.zebu_uid || a.broker)})</span>
           ${linkPill(a)}
           ${canEdit() && a.broker === 'Zebu' ? (
-            a.link === 'Linked' || (a.link && a.link !== 'Not linked') ? 
+            a.link === 'Linked' ? 
               `<button class="btn sm btn-disconnect" style="padding:2px 7px;font-size:10.5px" onclick="unlinkAccount('${a.id}')">Disconnect</button>` :
-              `<button class="btn sm btn-connect" style="padding:2px 7px;font-size:10.5px" onclick="openLinkModal('${a.id}')">Connect</button>`
+              `<button class="btn sm btn-connect" style="padding:2px 7px;font-size:10.5px" onclick="openLinkModal('${a.id}')">${a.link==='Login expired'?'Re-authorize':'Connect'}</button>`
           ) : ''}
         </span>
       `).join('')}
@@ -759,14 +848,19 @@ V.report = () => {
 
   const closedTr = tr.filter(x => !x.open);
   const openTr = tr.filter(x => x.open);
-  const closedPnl = closedTr.reduce((s, x) => s + tradePnl(x), 0);
+  const closedPnl = Math.round(closedTr.reduce((s, x) => s + tradePnl(x), 0) * 100) / 100;
   const dispTotal = m.total;
   const dispRealised = closedPnl;
+  const staleAcc = tAccounts.find(a => a.is_stale || a.link === 'Login expired' || a.link === 'REAUTH_REQUIRED');
+  const lastSyncStr = tAccounts.map(a => a.last_sync_at).filter(Boolean).sort().pop() || STATUS.poll?.last || '';
+  const syncTimeShort = lastSyncStr ? (lastSyncStr.includes('T') ? lastSyncStr.split('T')[1].slice(0,8) : lastSyncStr.slice(11,19)) : '';
+  const staleWarning = staleAcc ? `<span class="pill p-watch" style="margin-left:8px" title="${esc(staleAcc.sync_error || 'Broker API unavailable — showing last retained data')}">⚠️ STALE DATA${syncTimeShort?' · Last sync '+esc(syncTimeShort):''}${staleAcc.sync_error?' · '+esc(staleAcc.sync_error.slice(0,60)):''}</span>` : (syncTimeShort ? `<span class="muted mono" style="font-size:11.5px;margin-left:8px">Last sync: ${esc(syncTimeShort)}</span>` : '');
 
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div style="font-size:12.5px;color:${tr.length ? 'var(--text)' : 'var(--muted)'}">
-        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} carried forward</span>` : ''} · <b>Realised Profit: <span class="pos">${inr(dispRealised)}</span></b> · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
+        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>Realised Profit: <span class="${cls(dispRealised)}">${inr(dispRealised)}</span></b> · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
+        ${staleWarning}
       </div>
       <button class="btn sm pri" onclick="onTraderChange('${t.id}')">🔄 Fetch Live Zebu</button>
     </div>
@@ -820,12 +914,51 @@ V.report = () => {
 function calendar(m){
   if(!m.dayKeys.length) return '<span class="muted">No trades</span>';
   const map={}; m.dayKeys.forEach((d,i)=>map[d]=m.dayVals[i]); const mx=Math.max(...m.dayVals.map(Math.abs),1);
+  const meta=m.dayMeta||{};
   const first=m.dayKeys[0], last=m.dayKeys[m.dayKeys.length-1];
   let s=first; while(new Date(s+'T00:00:00Z').getUTCDay()!==1) s=addDays(s,-1);
   let html='<div class="cal">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="hd">${d}</div>`).join('');
-  for(; s<=last; s=addDays(s,1)){ const v=map[s]; const a=v==null?0:Math.min(1,Math.abs(v)/mx)*.8+.15;
-    html+= v==null? `<div style="background:#0f1730;color:#3d4a6b">${s.slice(8)}</div>` : `<div title="${s}: ${inr(v)}" style="background:${v>=0?`rgba(34,195,142,${a})`:`rgba(255,93,108,${a})`}"><b>${s.slice(8)}</b>${inrS(v).replace('₹','')}</div>`; }
+  for(; s<=last; s=addDays(s,1)){
+    const v=map[s], dm=meta[s];
+    const a=v==null?0:Math.min(1,Math.abs(v)/mx)*.8+.15;
+    if(v==null){
+      html+=`<div style="background:#0f1730;color:#3d4a6b">${s.slice(8)}</div>`;
+    } else {
+      const tip = dm ? `${s} (${dm.status||'FINALIZED'})\nRealized P&L: ${inr(dm.realized_pnl)}\nNet P&L: ${inr(dm.net_pnl)} (Charges: ${inr(dm.charges)})\nTrades: ${dm.trades} (${dm.wins}W / ${dm.losses}L)` : `${s}: ${inr(v)}`;
+      html+=`<div title="${esc(tip)}" style="cursor:pointer;background:${v>=0?`rgba(34,195,142,${a})`:`rgba(255,93,108,${a})`}" onclick="openCalendarDay('${s}')"><b>${s.slice(8)}</b>${inrS(v).replace('₹','')}</div>`;
+    }
+  }
   return html+'</div>';
+}
+function openCalendarDay(dateStr){
+  const tid = SEL.trader;
+  const t = trader(tid);
+  const dayTrades = S.trades.filter(tr => belongsToSelection(tr, tid) && !tr.open && ((tr.exitDate || tr.date) === dateStr));
+  const rep = DAILY_REPORTS.find(r => (r.account === tid || r.trader === tid) && r.date === dateStr);
+  const realized = rep ? Number(rep.realized_pnl || 0) : dayTrades.reduce((s,x)=>s+tradePnl(x),0);
+  const charges = rep ? Number(rep.charges || 0) : dayTrades.reduce((s,x)=>s+Number(x.charges||0),0);
+  const net = rep ? Number(rep.net_pnl || 0) : (realized - charges);
+  const wins = rep ? Number(rep.winning_trades || 0) : dayTrades.filter(x=>tradePnl(x)>0).length;
+  const losses = rep ? Number(rep.losing_trades || 0) : dayTrades.filter(x=>tradePnl(x)<=0).length;
+  const count = rep ? Number(rep.closed_trades || dayTrades.length) : dayTrades.length;
+  const statusBadge = rep?.status ? `<span class="pill ${rep.status==='FINALIZED'||rep.status==='ARCHIVED'?'p-pass':'p-watch'}">${esc(rep.status)}</span>` : '';
+
+  modal(`<h2>Daily P&L Summary · ${fmtDate(dateStr)} (${dateStr}) · ${esc(t?.name || tid)} ${statusBadge}</h2>
+    <div class="grid k4">
+      ${kpi('Realized P&L', inr(realized), count + ' closed trades', cls(realized))}
+      ${kpi('Net P&L', inr(net), 'Charges: ' + inr(charges), cls(net))}
+      ${kpi('Wins / Losses', `${wins}W / ${losses}L`, count ? pct(wins/count*100,1) + ' win rate' : '—')}
+      ${kpi('Status', rep?.status || (dateStr < TODAY ? 'FINALIZED' : 'LIVE'), rep?.finalized_at ? 'Locked ' + rep.finalized_at.slice(0,16).replace('T',' ') : 'Verified')}
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>Trades closed on ${fmtDate(dateStr)}</h3>
+      ${dayTrades.length ? `<div class="tbl-wrap"><table><tr><th>Entry</th><th>Exit</th><th>Account</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Charges</th><th class="n">Realized P&L</th><th class="n">Net P&L</th></tr>
+        ${dayTrades.map(x=>{
+          const rp = tradePnl(x), np = netTradePnl(x);
+          return `<tr class="click" onclick="openTrade('${x.id}')"><td class="mono">${fmtDate(x.date)} ${x.time}</td><td class="mono">${fmtDate(x.exitDate||x.date)} ${x.exitTime||''}</td><td>${esc(x.account)}</td><td>${esc(x.symbol)} ${x.strike||''} ${x.opt||''}</td><td>${x.side}</td><td class="n">${x.lots}</td><td class="n">${Number(x.entry||0).toFixed(2)}</td><td class="n">${Number(x.exit||0).toFixed(2)}</td><td class="n">${inr(x.charges||0)}</td><td class="n ${cls(rp)}">${inr(rp)}</td><td class="n ${cls(np)}">${inr(np)}</td></tr>`;
+        }).join('')}</table></div>` : '<div class="muted">No individual trade rows found for this date.</div>'}
+    </div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" onclick="closeModal()">Close</button></div>`);
 }
 function drawReportCharts(m, trades=[], isDay=false){
   charts.forEach(c=>c.destroy()); charts=[]; if(!window.Chart) return;
@@ -1021,12 +1154,18 @@ $('#mbg').addEventListener('click',e=>{ if(e.target.id==='mbg') closeModal(); })
 function val(id){ const e=document.getElementById(id); return e? e.value : undefined; }
 
 function openTrade(id){
-  const t=S.trades.find(x=>x.id===id); if(!t) return; const f=chk().byTrade[id]||[], r=S.rules[t.trader]||DEFAULT_RULES, m=moneyness(t,S.settings.strikeStep);
-  modal(`<h2>Trade ${t.id} · ${esc(trader(t.trader)?.name)} ${f.length?'<span class="pill p-high">🚩 '+f.length+' red flag(s)</span>':'<span class="pill p-pass">All rules followed</span>'}</h2>
-  <div class="grid k4">${kpi('Instrument',t.symbol+' '+t.strike+' '+t.opt,mLabel(m.d)+' · spot '+(t.spot?Math.round(t.spot):'n/a'))}${kpi('Entry → exit',t.entry+' → '+(t.open?'OPEN @ '+t.exit:t.exit),t.date+' '+t.time+' → '+t.exitDate+' '+t.exitTime)}${kpi('Lots',t.lots+' × '+t.lotSize,t.side+' · '+t.product+' · '+t.source)}${kpi(t.open?'Open P&L (LTP)':'Net P&L',inr(tradePnl(t)),'charges '+(t.chargesEstimated?'≈ ':'')+inr(t.charges)+(t.tsym?' · '+esc(t.tsym):''),cls(tradePnl(t)))}</div>
-  <div class="card" style="margin-top:14px"><h3>Rule check</h3>${f.length? f.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #1c2640">${levelPill(x.level)} <b>${esc(x.rule)}</b> — ${esc(x.did)}</div>`).join('') : '<span class="pos">✓ Every rule in his rule book was followed.</span>'}
-   <div class="muted" style="font-size:12px;margin-top:8px">Expected strike by his rule: <b>${expectedStrike(t,r,S.settings.strikeStep)} ${t.opt}</b> (${r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode})</div></div>
-  <div class="row" style="margin-top:14px;justify-content:flex-end">${canEdit()&&!(LIVE&&t.origin==='zebu')?`<button class="btn danger" onclick="delTrade('${t.id}')">Delete</button><button class="btn" onclick="editTrade('${t.id}')">Edit</button>`:''}${LIVE&&t.origin==='zebu'?'<span class="muted" style="font-size:12px;margin-right:auto">From Zebu trade book · charges estimated</span>':''}<button class="btn pri" onclick="closeModal()">Close</button></div>`);
+  const t=S.trades.find(x=>x.id===id); if(!t) return;
+  const {byTrade, unevaluatedByTrade}=chk();
+  const f=byTrade[id]||[], u=unevaluatedByTrade[id]||[];
+  const r=S.rules[t.account]||S.rules[t.trader]||DEFAULT_RULES, m=moneyness(t,S.settings.strikeStep);
+  const hasPnl = !(t.open && (t.pnl === null || t.pnl === undefined));
+  const pnlVal = hasPnl ? inr(tradePnl(t)) : 'Pending LTP';
+  const unevalHtml = u.length ? u.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #1c2640"><span class="pill p-watch">MISSING DATA</span> <b>${esc(x.rule)}</b> — ${esc(x.reason)}</div>`).join('') : '';
+  modal(`<h2>Trade ${t.id} · ${esc(trader(t.trader)?.name || t.account)} ${f.length?'<span class="pill p-high">🚩 '+f.length+' red flag(s)</span>':u.length?'<span class="pill p-watch">Partial rule check (missing broker data)</span>':'<span class="pill p-pass">All rules followed</span>'}</h2>
+  <div class="grid k4">${kpi('Instrument',t.symbol+' '+(t.strike||'')+' '+(t.opt||''),mLabel(m.d)+' · spot '+(t.spot?Math.round(t.spot):'n/a'))}${kpi('Entry → exit',t.entry+' → '+(t.open?'OPEN @ '+(t.exit??'—'):t.exit),t.date+' '+t.time+' → '+(t.exitDate||t.date)+' '+(t.exitTime||'OPEN'))}${kpi('Lots',t.lots+' × '+t.lotSize,t.side+' · '+t.product+' · '+t.source)}${kpi(t.open?'Open P&L (LTP)':'Realized P&L',pnlVal,'charges '+(t.chargesEstimated?'≈ ':'')+inr(t.charges)+(t.tsym?' · '+esc(t.tsym):''),hasPnl?cls(tradePnl(t)):'muted')}</div>
+  <div class="card" style="margin-top:14px"><h3>Rule check (${esc(t.account)})</h3>${f.length? f.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #1c2640">${levelPill(x.level)} <b>${esc(x.rule)}</b> — ${esc(x.did)} <span class="muted" style="font-size:11px">[${esc(x.status||'ACTIVE')}]</span></div>`).join('') : '<span class="pos">✓ No rule violations detected on available data.</span>'}${unevalHtml}
+   <div class="muted" style="font-size:12px;margin-top:8px">Expected strike by rule: <b>${expectedStrike(t,r,S.settings.strikeStep)} ${t.opt||''}</b> (${r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode})</div></div>
+  <div class="row" style="margin-top:14px;justify-content:flex-end">${canEdit()&&!(LIVE&&t.origin==='zebu')?`<button class="btn danger" onclick="delTrade('${t.id}')">Delete</button><button class="btn" onclick="editTrade('${t.id}')">Edit</button>`:''}${LIVE&&t.origin==='zebu'?`<span class="muted" style="font-size:12px;margin-right:auto">From Zebu trade book · ${t.is_finalized?'Finalized':'Live'} · charges estimated</span>`:''}<button class="btn pri" onclick="closeModal()">Close</button></div>`);
 }
 function delTrade(id){
   const t=S.trades.find(x=>x.id===id);
@@ -1175,10 +1314,15 @@ function saveAccount(id){
   });
 }
 function linkPill(a){
-  const isLinked = a.link === 'Linked' || (a.link && a.link !== 'Not linked' && a.link !== 'Disconnected');
+  const isExpired = a.link === 'Login expired' || a.link === 'REAUTH_REQUIRED' || a.ws_status === 'REAUTH_REQUIRED';
+  const isLinked = a.link === 'Linked';
   const ws = a.ws_status ? `<span class="pill ${a.ws_status==='REAL-TIME'?'p-live':a.ws_status==='DEGRADED'?'p-watch':'p-stop'}" style="margin-left:4px;font-size:9.5px;padding:1px 5px">${esc(a.ws_status)}</span>` : '';
-  if(isLinked){
-    return `<span class="pill-linked" style="font-size:11px;padding:2px 7px"><span style="color:#22c55e">●</span> Linked</span>${ws}${a.cliname?`<span class="muted" style="font-size:11px;margin-left:5px">(${esc(a.cliname)})</span>`:''}`;
+  const staleTag = a.is_stale ? `<span class="pill p-watch" style="margin-left:4px;font-size:9.5px;padding:1px 5px" title="${esc(a.sync_error||'Broker API temporarily unavailable — displaying last retained data')}">STALE</span>` : '';
+  const syncTs = a.last_sync_at ? `<span class="muted mono" style="font-size:10.5px;margin-left:5px" title="Last successful sync: ${esc(a.last_sync_at)}">⟳ ${esc(a.last_sync_at.includes('T')?a.last_sync_at.split('T')[1].slice(0,5):a.last_sync_at.slice(11,16))}</span>` : '';
+  if(isExpired){
+    return `<span class="pill-disconnected" style="font-size:11px;padding:2px 7px" title="Broker token expired — click Re-link to authorize"><span style="color:#f59e0b">⚠️</span> Login expired (Re-auth needed)</span>${staleTag}${syncTs}`;
+  } else if(isLinked){
+    return `<span class="pill-linked" style="font-size:11px;padding:2px 7px"><span style="color:#22c55e">●</span> Linked</span>${ws}${staleTag}${a.cliname?`<span class="muted" style="font-size:11px;margin-left:5px">(${esc(a.cliname)})</span>`:''}${syncTs}`;
   } else {
     return `<span class="pill-disconnected" style="font-size:11px;padding:2px 7px"><span style="color:#ef4444">○</span> Not linked</span>${ws}`;
   }
@@ -1444,10 +1588,13 @@ function doImport(){
     if(side === 'B') side = 'BUY';
     if(side === 'S') side = 'SELL';
 
+    const entryPx = Number(r.entry ?? r.price);
+    const exitPx = Number(r.exit ?? r.entry ?? r.price);
+    if(isNaN(entryPx) || entryPx <= 0){ continue; }
     const t = {
       id: uid('T'),
       date: d,
-      time: tm.slice(0, 5) || '10:00',
+      time: tm.slice(0, 5) || '09:15',
       trader: (r.trader || defTrader).trim(),
       account: (r.account || defAccount).trim(),
       symbol: sym,
@@ -1458,11 +1605,11 @@ function doImport(){
       lots: lots,
       lotSize: lotSize,
       qty: lots * lotSize,
-      entry: +r.entry || +r.price || 100,
-      exit: +r.exit || +r.entry || 100,
+      entry: entryPx,
+      exit: !isNaN(exitPx) && exitPx > 0 ? exitPx : entryPx,
       exitDate: r.exitDate || d,
       exitTime: r.exitTime || tm,
-      spot: +r.spot || stk || 0,
+      spot: +r.spot || null,
       product: (r.product || 'MIS').trim().toUpperCase(),
       source: (r.source || 'Manual').trim(),
       charges: +r.charges || 0,
