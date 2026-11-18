@@ -376,9 +376,34 @@ function metrics(trades, capital){
     charges: T.reduce((a,t)=>a+(t.charges||0),0), dayKeys:dk, dayVals:dv, series, dd, grossWin:sw, grossLoss:sl
   };
 }
-function trader(id){ return S.traders.find(t=>t.id===id); }
+function trader(id){
+  const found = S.traders.find(t=>t.id===id);
+  if(found) return found;
+  const acc = S.accounts.find(a=>a.id===id) || S.accounts.find(a=>a.zebu_uid===id);
+  if(acc){
+    const uid = acc.zebu_uid || acc.id;
+    return {
+      id: id,
+      name: acc.name ? `${acc.name} (${uid})` : uid,
+      ra: 'Arshiyan',
+      style: 'Manual',
+      holding: 'Intraday',
+      segment: 'Nifty options',
+      testCapital: 300000,
+      status: acc.link==='Linked'?'Live':'Testing',
+      start: '2026-11-14'
+    };
+  }
+  return null;
+}
 function account(id){ return S.accounts.find(a=>a.id===id); }
-function tradesOf(id, from, to){ return S.trades.filter(t=>t.trader===id && (!from||t.date>=from) && (!to||t.date<=to)); }
+function tradesOf(id, from, to){
+  return S.trades.filter(t => {
+    const acc = account(t.account);
+    const match = (t.trader === id) || (t.account === id) || (acc && (acc.zebu_uid === id || acc.zebu_client_id === id));
+    return match && (!from || t.date >= from) && (!to || t.date <= to);
+  });
+}
 function testWindow(t){ const end = nthTradingDay(t.start, S.settings.testDays + (t.extended? S.settings.extendDays:0)); return {from:t.start, to:end}; }
 function testDay(t){ return Math.min(tradingDaysBetween(t.start, TODAY), S.settings.testDays + (t.extended?S.settings.extendDays:0)); }
 
@@ -421,7 +446,21 @@ function header(title, sub, right=''){ return `<div class="top"><div><h1>${title
 function statusPill(s){ const m={Testing:'p-test',Live:'p-live',Watch:'p-watch','On watch':'p-watch',Stopped:'p-stop'}; return `<span class="pill ${m[s]||'p-low'}">${s==='Watch'?'On watch':s}</span>`; }
 function levelPill(l){ return `<span class="pill ${l==='High'?'p-high':l==='Medium'?'p-med':'p-low'}">${l}</span>`; }
 function resultPill(r){ return `<span class="pill ${r==='Pass'?'p-pass':r==='Watch'?'p-watch':r==='Fail'?'p-fail':'p-test'}">${r}</span>`; }
-function traderSelect(id, val, all){ return `<select id="${id}">${all?`<option value="">All traders</option>`:''}${S.traders.map(t=>`<option value="${t.id}" ${t.id===val?'selected':''}>${esc(t.name)} · ${t.id}</option>`).join('')}</select>`; }
+function traderSelect(id, val, all){
+  const list = [...S.traders];
+  const ids = new Set(list.map(t=>t.id));
+  (S.accounts || []).forEach(a => {
+    if(!ids.has(a.id)){
+      ids.add(a.id);
+      list.push({ id: a.id, name: a.name ? `${a.name} (${a.zebu_uid||a.id})` : a.id });
+    }
+    if(a.zebu_uid && !ids.has(a.zebu_uid)){
+      ids.add(a.zebu_uid);
+      list.push({ id: a.zebu_uid, name: a.name ? `${a.name} (${a.zebu_uid})` : a.zebu_uid });
+    }
+  });
+  return `<select id="${id}">${all?`<option value="">All accounts / traders</option>`:''}${list.map(t=>`<option value="${t.id}" ${t.id===val?'selected':''}>${esc(t.name)} · ${t.id}</option>`).join('')}</select>`;
+}
 function kpi(l,v,h='',c=''){ return `<div class="card kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div>${h?`<div class="h">${h}</div>`:''}</div>`; }
 
 // ---------- views ----------
@@ -620,7 +659,7 @@ V.report = () => {
   else { from=''; label='All time'; }
   const tr=tradesOf(t.id,from,to), m=metrics(tr,t.testCapital), {byTrade}=chk(), sc=scorecard(t);
   const fl=tr.flatMap(x=>(byTrade[x.id]||[]).map(f=>({...f,trade:x}))).sort((a,b)=>(b.trade.date+b.trade.time).localeCompare(a.trade.date+a.trade.time));
-  const tAccounts = S.accounts.filter(a => a.trader === t.id);
+  const tAccounts = S.accounts.filter(a => a.trader === t.id || a.id === t.id || a.zebu_uid === t.id);
   const accBar = tAccounts.length ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;gap:12px">
       <span class="muted" style="font-size:12px">Broker Accounts:</span>
