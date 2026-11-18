@@ -297,7 +297,7 @@ async function detectLive(){
 // ---------- core calculations ----------
 function tradePnl(t){
   if(t.pnl !== undefined && t.pnl !== null && !isNaN(t.pnl)) {
-    return Number(t.pnl) - (t.charges||0);
+    return Number(t.pnl);
   }
   const dir = t.side==='SELL'?-1:1;
   const q = (t.qty && t.qty > 0) ? t.qty : (t.lots * t.lotSize);
