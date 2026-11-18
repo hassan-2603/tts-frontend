@@ -664,30 +664,11 @@ V.report = () => {
   
   const range = SEL.range || 'today';
   let from, to=TODAY, label;
-  let isNoTodayTrades = false;
-  let latestSessionDate = '';
-  let latestSessionCount = 0;
 
   if(range==='today'){
-    const allAcctTrades = tradesOf(t.id);
-    const todayTrades = allAcctTrades.filter(x => x.date === TODAY);
-    if(todayTrades.length > 0){
-      from = TODAY;
-      to = TODAY;
-      label = 'Today (' + fmtDate(TODAY) + ')';
-    } else if(allAcctTrades.length > 0){
-      isNoTodayTrades = true;
-      latestSessionDate = allAcctTrades.map(x => x.date).sort().reverse()[0];
-      const latestTr = allAcctTrades.filter(x => x.date === latestSessionDate);
-      latestSessionCount = latestTr.length;
-      from = latestSessionDate;
-      to = latestSessionDate;
-      label = 'Today (' + fmtDate(TODAY) + ') · Latest: ' + fmtDate(latestSessionDate);
-    } else {
-      from = TODAY;
-      to = TODAY;
-      label = 'Today (' + fmtDate(TODAY) + ')';
-    }
+    from = TODAY;
+    to = TODAY;
+    label = 'Today (' + fmtDate(TODAY) + ')';
   } else if(range==='test'){
     const w=testWindow(t);
     from=w.from;
@@ -695,6 +676,7 @@ V.report = () => {
     label='Test period ('+S.settings.testDays+' trading days)';
   } else if(range==='month'){
     from=TODAY.slice(0,8)+'01';
+    to=TODAY;
     label='This month';
   } else if(range==='custom'){
     from=SEL.from;
@@ -702,10 +684,11 @@ V.report = () => {
     label='Custom';
   } else {
     from='';
+    to=TODAY;
     label='All time';
   }
 
-  // Current day / selected range trades for main heading, KPIs, and graph
+  // Today / selected range trades for main heading, KPIs, and graph
   const tr = tradesOf(t.id, from, to);
   const m = metrics(tr, t.testCapital);
   const {byTrade} = chk();
@@ -735,12 +718,12 @@ V.report = () => {
     </div>
   ` : '';
 
-  const sessionBanner = isNoTodayTrades && latestSessionDate ? `
-    <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div style="font-size:12.5px;color:#93c5fd">
-        ℹ️ <b>No trades placed yet today (${fmtDate(TODAY)})</b>. Displaying latest trading session (${fmtDate(latestSessionDate)}) with <b>${latestSessionCount} trades</b>.
+  const todaySyncBar = range==='today' ? `
+    <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div style="font-size:12.5px;color:${tr.length ? 'var(--text)' : 'var(--muted)'}">
+        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>` : '0 trades fetched so far today.'}
       </div>
-      <button class="btn sm" onclick="onTraderChange('${t.id}')">🔄 Fetch Live Zebu</button>
+      <button class="btn sm pri" onclick="onTraderChange('${t.id}')">🔄 Fetch Live Zebu</button>
     </div>
   ` : '';
 
@@ -751,13 +734,13 @@ V.report = () => {
      ${range==='custom'?`<input type="date" id="rFrom" value="${SEL.from}"><input type="date" id="rTo" value="${SEL.to}"><button class="btn sm" onclick="SEL.from=$('#rFrom').value;SEL.to=$('#rTo').value;render()">Go</button>`:''}
      <button class="btn" onclick="exportCSV('report')">Export</button>`) +
   accBar +
-  sessionBanner +
+  todaySyncBar +
   `<div class="grid k6">
-    ${kpi('Total P&L', inrS(m.total), (range==='today' ? (isNoTodayTrades ? (m.n + ' trades (' + fmtDate(latestSessionDate) + ')') : (m.n + ' trades today')) : (m.n + ' trades')), cls(m.total))}
+    ${kpi('Total P&L', inrS(m.total), (range==='today' ? (m.n + ' trades today') : (m.n + ' trades')), cls(m.total))}
     ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
     ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
     ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
-    ${kpi(range==='today' ? (isNoTodayTrades ? 'Trades (' + fmtDate(latestSessionDate) + ')' : 'Trades today') : 'Trades / day', range==='today' ? String(m.n) : m.tpd.toFixed(1), range==='today' ? (isNoTodayTrades ? fmtDate(latestSessionDate) : fmtDate(TODAY)) : (m.days+' trading days'))}
+    ${kpi(range==='today' ? 'Trades today' : 'Trades / day', range==='today' ? String(m.n) : m.tpd.toFixed(1), range==='today' ? fmtDate(TODAY) : (m.days+' trading days'))}
     ${kpi('Rule-follow', pct(m.ruleFollow), m.flagsN+' flags · '+m.high+' high', m.ruleFollow>=S.settings.pass.ruleFollow?'pos':'amb')}
   </div>
   <div class="grid c21" style="margin-top:14px">
