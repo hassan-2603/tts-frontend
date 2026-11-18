@@ -427,7 +427,13 @@ function tradesOf(id, from, to){
                   (acc && (acc.zebu_uid === id || acc.zebu_client_id === id));
     if(!match) return false;
     if(from && to && from === to){
-      // Single day filter (like Today) - match if trade was entered on this date OR exited on this date
+      if(from === TODAY){
+        // At 12 midnight:
+        // 1. Unclosed trades (open positions) are NOT removed - they stay on the trade report
+        if(t.open) return true;
+        // 2. Closed trades are removed from Today's report once their day passes (saved in the calendar)
+        return (t.exitDate === TODAY) || (t.date === TODAY);
+      }
       return (t.date === from) || (t.exitDate === from);
     }
     const tradeDay = t.exitDate || t.date;
@@ -760,7 +766,7 @@ V.report = () => {
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div style="font-size:12.5px;color:${tr.length ? 'var(--text)' : 'var(--muted)'}">
-        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span> · <b>Realised Profit: <span class="pos">${inr(dispRealised)}</span></b> · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
+        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} carried forward</span>` : ''} · <b>Realised Profit: <span class="pos">${inr(dispRealised)}</span></b> · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
       </div>
       <button class="btn sm pri" onclick="onTraderChange('${t.id}')">🔄 Fetch Live Zebu</button>
     </div>
