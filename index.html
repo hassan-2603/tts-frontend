@@ -295,8 +295,22 @@ async function detectLive(){
 }
 
 // ---------- core calculations ----------
-function tradePnl(t){ const dir = t.side==='SELL'?-1:1; return (t.exit - t.entry)*t.lots*t.lotSize*dir - (t.charges||0); }
-function grossPnl(t){ const dir = t.side==='SELL'?-1:1; return (t.exit - t.entry)*t.lots*t.lotSize*dir; }
+function tradePnl(t){
+  if(t.pnl !== undefined && t.pnl !== null && !isNaN(t.pnl)) {
+    return Number(t.pnl) - (t.charges||0);
+  }
+  const dir = t.side==='SELL'?-1:1;
+  const q = (t.qty && t.qty > 0) ? t.qty : (t.lots * t.lotSize);
+  return (t.exit - t.entry) * q * dir - (t.charges||0);
+}
+function grossPnl(t){
+  if(t.pnl !== undefined && t.pnl !== null && !isNaN(t.pnl)) {
+    return Number(t.pnl);
+  }
+  const dir = t.side==='SELL'?-1:1;
+  const q = (t.qty && t.qty > 0) ? t.qty : (t.lots * t.lotSize);
+  return (t.exit - t.entry) * q * dir;
+}
 function moneyness(t, step){ // +n = n strikes ITM, -n = n strikes OTM, 0 = ATM
   if(!t.spot) return {atm:null,d:NaN};
   const atm = Math.round(t.spot/step)*step;
@@ -410,7 +424,13 @@ function tradesOf(id, from, to){
                   (targetZebuUid && t.account === targetZebuUid) ||
                   (targetZebuUid && acc && acc.zebu_uid === targetZebuUid) ||
                   (acc && (acc.zebu_uid === id || acc.zebu_client_id === id));
-    return match && (!from || t.date >= from) && (!to || t.date <= to);
+    if(!match) return false;
+    if(from && to && from === to){
+      // Single day filter (like Today) - match if trade was entered on this date OR exited on this date
+      return (t.date === from) || (t.exitDate === from);
+    }
+    return (!from || t.date >= from || (t.exitDate && t.exitDate >= from)) && 
+           (!to || t.date <= to);
   });
 }
 function testWindow(t){ const end = nthTradingDay(t.start, S.settings.testDays + (t.extended? S.settings.extendDays:0)); return {from:t.start, to:end}; }
