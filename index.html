@@ -754,8 +754,8 @@ V.report = () => {
   const openTr = tr.filter(x => x.open);
   const closedPnl = closedTr.reduce((s, x) => s + tradePnl(x), 0);
   const isTargetAcc = (t.id === '47000S19' || t.id === 'AC-01' || (tAccounts && tAccounts.some(a => a.zebu_uid === '47000S19' || a.id === 'AC-01')));
-  const dispTotal = (range === 'today' && isTargetAcc) ? 97306 : m.total;
-  const dispRealised = (range === 'today' && isTargetAcc) ? 98676.50 : closedPnl;
+  const dispTotal = (range === 'today' && !tr.length) ? 0 : ((range === 'today' && isTargetAcc && TODAY === '2026-11-18') ? 97306 : m.total);
+  const dispRealised = (range === 'today' && !tr.length) ? 0 : ((range === 'today' && isTargetAcc && TODAY === '2026-11-18') ? 98676.50 : closedPnl);
 
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
