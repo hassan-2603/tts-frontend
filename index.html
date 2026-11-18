@@ -429,7 +429,7 @@ const NAV = [
   ['sec','Compare & decide'],['report','Trader report','📈'],['compare','Compare traders','⇅'],['scorecard','30-day scorecard','✓'],['groups','Account groups','▤'],
   ['sec','System'],['settings','Settings & API','⚙']
 ];
-let VIEW='overview', SEL={trader:'TR-001', range:'test', from:addDays(TODAY,-30), to:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
+let VIEW='overview', SEL={trader:'TR-001', range:'today', from:addDays(TODAY,-30), to:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
 let charts=[];
 function shell(inner){
   const nf = chk().flags.filter(f=>f.trade.date===TODAY).length;
@@ -652,13 +652,42 @@ V.report = () => {
     SEL.trader = t.id;
   }
   if(!t) return header('Trader report','No trader') + '<div class="card" style="padding:40px;text-align:center;color:var(--muted)">No traders registered in system.</div>';
+  
+  const range = SEL.range || 'today';
   let from, to=TODAY, label;
-  if(SEL.range==='test'){ const w=testWindow(t); from=w.from; to=w.to; label='Test period ('+S.settings.testDays+' trading days)'; }
-  else if(SEL.range==='month'){ from=TODAY.slice(0,8)+'01'; label='This month'; }
-  else if(SEL.range==='custom'){ from=SEL.from; to=SEL.to; label='Custom'; }
-  else { from=''; label='All time'; }
-  const tr=tradesOf(t.id,from,to), m=metrics(tr,t.testCapital), {byTrade}=chk(), sc=scorecard(t);
-  const fl=tr.flatMap(x=>(byTrade[x.id]||[]).map(f=>({...f,trade:x}))).sort((a,b)=>(b.trade.date+b.trade.time).localeCompare(a.trade.date+a.trade.time));
+  if(range==='today'){
+    from = TODAY;
+    to = TODAY;
+    label = 'Today (' + fmtDate(TODAY) + ')';
+  } else if(range==='test'){
+    const w=testWindow(t);
+    from=w.from;
+    to=w.to;
+    label='Test period ('+S.settings.testDays+' trading days)';
+  } else if(range==='month'){
+    from=TODAY.slice(0,8)+'01';
+    label='This month';
+  } else if(range==='custom'){
+    from=SEL.from;
+    to=SEL.to;
+    label='Custom';
+  } else {
+    from='';
+    label='All time';
+  }
+
+  // Current day / selected range trades for main heading, KPIs, and graph
+  const tr = tradesOf(t.id, from, to);
+  const m = metrics(tr, t.testCapital);
+  const {byTrade} = chk();
+
+  // Full test window metrics specifically for "All the numbers" box and 30-day scorecard
+  const w = testWindow(t);
+  const trAll = tradesOf(t.id, w.from, w.to);
+  const mAll = metrics(trAll, t.testCapital);
+  const sc = scorecard(t);
+
+  const fl = tr.flatMap(x=>(byTrade[x.id]||[]).map(f=>({...f,trade:x}))).sort((a,b)=>(b.trade.date+b.trade.time).localeCompare(a.trade.date+a.trade.time));
   const tAccounts = S.accounts.filter(a => a.trader === t.id || a.id === t.id || a.zebu_uid === t.id);
   const accBar = tAccounts.length ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;gap:12px">
@@ -676,24 +705,49 @@ V.report = () => {
       `).join('')}
     </div>
   ` : '';
-  setTimeout(()=>drawReportCharts(m),0);
+
+  setTimeout(()=>drawReportCharts(m, tr, range==='today'), 0);
+
   return header(esc(t.name)+' — report card', `${t.id} · ${t.style} · ${t.holding} · ${esc(t.segment)} · ${label}`,
-    `${traderSelect('selTr',t.id)}<div class="tabs">${[['test','Test period'],['month','This month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${SEL.range===k?'on':''}" onclick="SEL.range='${k}';render()">${l}</button>`).join('')}</div>
-     ${SEL.range==='custom'?`<input type="date" id="rFrom" value="${SEL.from}"><input type="date" id="rTo" value="${SEL.to}"><button class="btn sm" onclick="SEL.from=$('#rFrom').value;SEL.to=$('#rTo').value;render()">Go</button>`:''}
+    `${traderSelect('selTr',t.id)}<div class="tabs">${[['today','Today'],['test','Test period'],['month','This month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${range===k?'on':''}" onclick="SEL.range='${k}';render()">${l}</button>`).join('')}</div>
+     ${range==='custom'?`<input type="date" id="rFrom" value="${SEL.from}"><input type="date" id="rTo" value="${SEL.to}"><button class="btn sm" onclick="SEL.from=$('#rFrom').value;SEL.to=$('#rTo').value;render()">Go</button>`:''}
      <button class="btn" onclick="exportCSV('report')">Export</button>`) +
   accBar +
-  `<div class="grid k6">${kpi('Total P&L',inrS(m.total),m.n+' trades',cls(m.total))}${kpi('Accuracy',pct(m.accuracy),'winning ÷ total trades')}${kpi('Risk : Reward',isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—','avg win ÷ avg loss')}
-   ${kpi('Max drawdown',inr(m.mdd),pct(m.mddPct,1)+' of capital','neg')}${kpi('Trades / day',m.tpd.toFixed(1),m.days+' trading days')}${kpi('Rule-follow',pct(m.ruleFollow),m.flagsN+' flags · '+m.high+' high',m.ruleFollow>=S.settings.pass.ruleFollow?'pos':'amb')}</div>
-  <div class="grid c21" style="margin-top:14px"><div class="card"><h3>Profit growth <small>₹, cumulative</small><span style="flex:1"></span><small>Intraday ${pct(m.intraday)} · Manual ${pct(m.manual)} · ${m.n} trades</small></h3><div style="height:240px"><canvas id="cGrowth"></canvas></div>
-    <h3 style="margin-top:16px">Drawdown <small>fall from last top · worst ${inr(-m.mdd)}${m.mddDay?' on '+fmtDate(m.mddDay):''}</small></h3><div style="height:150px"><canvas id="cDD"></canvas></div></div>
-   <div><div class="card"><h3>All the numbers</h3><table class="checklist">
-     ${[['Profit factor',isFinite(m.pf)?m.pf.toFixed(2):'—'],['Total win / total loss',inr(m.grossWin)+' / '+inr(m.grossLoss)],['Best day',m.bestDay?inr(m.best)+' · '+fmtDate(m.bestDay):'—'],['Worst day',m.worstDay?inr(m.worst)+' · '+fmtDate(m.worstDay):'—'],
-       ['Longest losing streak',m.streak+' trades'],['Avg holding time',isFinite(m.hold)?Math.round(m.hold)+' min':'—'],['Intraday vs carry fwd',pct(m.intraday)+' / '+pct(100-m.intraday)],['Manual vs algo',pct(m.manual)+' / '+pct(100-m.manual)],['Charges paid',inr(m.charges)],['Test capital',inr(t.testCapital)]]
-       .map(([a,b])=>`<tr><td class="muted">${a}</td><td class="mono">${b}</td></tr>`).join('')}</table></div>
-     <div class="card" style="margin-top:14px"><h3>30-day scorecard ${resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total)}</h3>${sc.checks.map(c=>`<div class="row" style="justify-content:space-between;padding:4px 0"><span>${c.ok?'✅':'❌'} ${c.k}</span><span class="mono muted" style="font-size:12px">${c.val}</span></div>`).join('')}
-       ${sc.done?'':`<div class="muted" style="font-size:12px;margin-top:6px">Provisional — ${sc.total-sc.day} trading days left. Result if test ended today: <b>${sc.result}</b></div>`}</div></div></div>
-  <div class="grid k2" style="margin-top:14px"><div class="card"><h3>Daily P&L calendar</h3>${calendar(m)}</div>
-   <div class="card"><h3>Red flag history <small>${fl.length} in period</small></h3>${flagTable(fl.slice(0,40))}</div></div>`;
+  `<div class="grid k6">
+    ${kpi('Total P&L', inrS(m.total), (range==='today' ? (m.n + ' trades today') : (m.n + ' trades')), cls(m.total))}
+    ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
+    ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
+    ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
+    ${kpi(range==='today' ? 'Trades today' : 'Trades / day', range==='today' ? String(m.n) : m.tpd.toFixed(1), range==='today' ? fmtDate(TODAY) : (m.days+' trading days'))}
+    ${kpi('Rule-follow', pct(m.ruleFollow), m.flagsN+' flags · '+m.high+' high', m.ruleFollow>=S.settings.pass.ruleFollow?'pos':'amb')}
+  </div>
+  <div class="grid c21" style="margin-top:14px">
+    <div class="card">
+      <h3>Profit growth <small>₹, ${range==='today'?'intraday':'cumulative'}</small><span style="flex:1"></span><small>Intraday ${pct(m.intraday)} · Manual ${pct(m.manual)} · ${m.n} trades</small></h3>
+      <div style="height:240px"><canvas id="cGrowth"></canvas></div>
+      <h3 style="margin-top:16px">Drawdown <small>fall from ${range==='today'?'day\'s top':'last top'} · worst ${inr(-m.mdd)}${m.mddDay && range!=='today' ?' on '+fmtDate(m.mddDay):''}</small></h3>
+      <div style="height:150px"><canvas id="cDD"></canvas></div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>All the numbers</h3>
+        <table class="checklist">
+          ${[['Profit factor',isFinite(mAll.pf)?mAll.pf.toFixed(2):'—'],['Total win / total loss',inr(mAll.grossWin)+' / '+inr(mAll.grossLoss)],['Best day',mAll.bestDay?inr(mAll.best)+' · '+fmtDate(mAll.bestDay):'—'],['Worst day',mAll.worstDay?inr(mAll.worst)+' · '+fmtDate(mAll.worstDay):'—'],
+            ['Longest losing streak',mAll.streak+' trades'],['Avg holding time',isFinite(mAll.hold)?Math.round(mAll.hold)+' min':'—'],['Intraday vs carry fwd',pct(mAll.intraday)+' / '+pct(100-mAll.intraday)],['Manual vs algo',pct(mAll.manual)+' / '+pct(100-mAll.manual)],['Charges paid',inr(mAll.charges)],['Test capital',inr(t.testCapital)]]
+            .map(([a,b])=>`<tr><td class="muted">${a}</td><td class="mono">${b}</td></tr>`).join('')}
+        </table>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>30-day scorecard ${resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total)}</h3>
+        ${sc.checks.map(c=>`<div class="row" style="justify-content:space-between;padding:4px 0"><span>${c.ok?'✅':'❌'} ${c.k}</span><span class="mono muted" style="font-size:12px">${c.val}</span></div>`).join('')}
+        ${sc.done?'':`<div class="muted" style="font-size:12px;margin-top:6px">Provisional — ${sc.total-sc.day} trading days left. Result if test ended today: <b>${sc.result}</b></div>`}
+      </div>
+    </div>
+  </div>
+  <div class="grid k2" style="margin-top:14px">
+    <div class="card"><h3>Daily P&L calendar</h3>${calendar(mAll)}</div>
+    <div class="card"><h3>Red flag history <small>${fl.length} in period</small></h3>${flagTable(fl.slice(0,40))}</div>
+  </div>`;
 };
 function calendar(m){
   if(!m.dayKeys.length) return '<span class="muted">No trades</span>';
@@ -705,12 +759,83 @@ function calendar(m){
     html+= v==null? `<div style="background:#0f1730;color:#3d4a6b">${s.slice(8)}</div>` : `<div title="${s}: ${inr(v)}" style="background:${v>=0?`rgba(34,195,142,${a})`:`rgba(255,93,108,${a})`}"><b>${s.slice(8)}</b>${inrS(v).replace('₹','')}</div>`; }
   return html+'</div>';
 }
-function drawReportCharts(m){
+function drawReportCharts(m, trades=[], isDay=false){
   charts.forEach(c=>c.destroy()); charts=[]; if(!window.Chart) return;
-  const labels=m.dayKeys.map(fmtDate), base={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>inr(c.parsed.y)}}},scales:{x:{ticks:{color:'#8a96b2',maxTicksLimit:10},grid:{color:'#1c2640'}},y:{ticks:{color:'#8a96b2',callback:v=>inrS(v)},grid:{color:'#1c2640'}}}};
-  const g=$('#cGrowth'), d=$('#cDD');
-  if(g) charts.push(new Chart(g,{type:'line',data:{labels,datasets:[{data:m.series,borderColor:'#22c38e',backgroundColor:'rgba(34,195,142,.12)',fill:true,tension:.25,pointRadius:0,borderWidth:2}]},options:base}));
-  if(d) charts.push(new Chart(d,{type:'line',data:{labels,datasets:[{data:m.dd,borderColor:'#ff5d6c',backgroundColor:'rgba(255,93,108,.18)',fill:true,tension:.2,pointRadius:0,borderWidth:1.5}]},options:base}));
+
+  let labels, series, dd;
+  const T = [...trades].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+
+  if(isDay || (m.dayKeys && m.dayKeys.length <= 1)){
+    if(!T.length){
+      labels = ['09:15', '11:00', '13:00', '15:30'];
+      series = [0, 0, 0, 0];
+      dd = [0, 0, 0, 0];
+    } else {
+      labels = ['09:15'];
+      series = [0];
+      dd = [0];
+      let cum = 0, peak = 0;
+      T.forEach(t => {
+        cum += tradePnl(t);
+        peak = Math.max(peak, cum);
+        labels.push(t.time || '10:00');
+        series.push(cum);
+        dd.push(cum - peak);
+      });
+    }
+  } else {
+    labels = m.dayKeys.map(fmtDate);
+    series = m.series;
+    dd = m.dd;
+  }
+
+  const base = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: c => inr(c.parsed.y) } }
+    },
+    scales: {
+      x: { ticks: { color: '#8a96b2', maxTicksLimit: 10 }, grid: { color: '#1c2640' } },
+      y: { ticks: { color: '#8a96b2', callback: v => inrS(v) }, grid: { color: '#1c2640' } }
+    }
+  };
+
+  const g = $('#cGrowth'), d = $('#cDD');
+  if(g) charts.push(new Chart(g, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: series,
+        borderColor: '#22c38e',
+        backgroundColor: 'rgba(34,195,142,.12)',
+        fill: true,
+        tension: 0.2,
+        pointRadius: series.length > 25 ? 0 : 3,
+        borderWidth: 2
+      }]
+    },
+    options: base
+  }));
+
+  if(d) charts.push(new Chart(d, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: dd,
+        borderColor: '#ff5d6c',
+        backgroundColor: 'rgba(255,93,108,.18)',
+        fill: true,
+        tension: 0.2,
+        pointRadius: dd.length > 25 ? 0 : 3,
+        borderWidth: 1.5
+      }]
+    },
+    options: base
+  }));
 }
 
 V.compare = () => {
@@ -820,7 +945,7 @@ Broker side (your backend, read-only): Angel One SmartAPI tradeBook, Zerodha Kit
 
 // ---------- actions ----------
 function go(v){ if(!V[v]) v='overview'; VIEW=v; closeModal(); try{ if(location.hash.slice(1)!==v) history.replaceState(null,'','#'+v); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
-function openReport(id){ SEL.trader=id; SEL.range='test'; go('report'); }
+function openReport(id){ SEL.trader=id; SEL.range='today'; go('report'); }
 function openRules(id){ SEL.trader=id; go('rules'); }
 function modal(html){ $('#modal').innerHTML=html; $('#mbg').classList.add('on'); }
 function closeModal(){ $('#mbg').classList.remove('on'); }
