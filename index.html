@@ -738,10 +738,15 @@ V.report = () => {
     </div>
   ` : '';
 
+  const closedTr = tr.filter(x => !x.open);
+  const openTr = tr.filter(x => x.open);
+  const closedPnl = closedTr.reduce((s, x) => s + tradePnl(x), 0);
+  const openMtm = openTr.reduce((s, x) => s + tradePnl(x), 0);
+
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div style="font-size:12.5px;color:${tr.length ? 'var(--text)' : 'var(--muted)'}">
-        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>` : '0 trades fetched so far today.'}
+        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span> · <b>Closed Realized Profit: <span class="pos">${inr(closedPnl)}</span></b> ${openTr.length ? `· Open MTM: <span class="${openMtm>=0?'pos':'neg'}">${inr(openMtm)}</span>` : ''}` : '0 trades fetched so far today.'}
       </div>
       <button class="btn sm pri" onclick="onTraderChange('${t.id}')">🔄 Fetch Live Zebu</button>
     </div>
@@ -756,7 +761,7 @@ V.report = () => {
   accBar +
   todaySyncBar +
   `<div class="grid k6">
-    ${kpi('Total P&L', inrS(m.total), (range==='today' ? (m.n + ' trades today') : (m.n + ' trades')), cls(m.total))}
+    ${kpi('Total P&L', inrS(m.total), (range==='today' ? `Realized ${inrS(closedPnl)}${openTr.length ? ' · MTM ' + inrS(openMtm) : ''}` : (m.n + ' trades')), cls(m.total))}
     ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
     ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
     ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
