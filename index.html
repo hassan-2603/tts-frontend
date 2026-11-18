@@ -122,16 +122,21 @@ const inr = (n, d=0) => (n<0?'−':'') + '₹' + Math.abs(n).toLocaleString('en-
 const inrS = n => { const a=Math.abs(n), s=n<0?'−':(n>0?'+':''); return a>=1e7? s+'₹'+(a/1e7).toFixed(2)+' Cr' : a>=1e5? s+'₹'+(a/1e5).toFixed(2)+' L' : s+'₹'+Math.round(a).toLocaleString('en-IN'); };
 const pct = (n,d=0) => isFinite(n)? n.toFixed(d)+'%' : '—';
 const cls = n => n>0?'pos':(n<0?'neg':'');
-const toMin = t => { const [h,m]=String(t).split(':').map(Number); return h*60+m; };
+const toMin = t => {
+  if(!t || typeof t !== 'string' || !t.includes(':')) return null;
+  const [h,m]=t.split(':').map(Number);
+  if(isNaN(h)||isNaN(m)) return null;
+  return h*60+m;
+};
 const fromMin = m => String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const uid = p => p + Math.random().toString(36).slice(2,8).toUpperCase();
 const TODAY = new Date(Date.now()+5.5*3600e3).toISOString().slice(0,10);
 function dstr(d){ return d.toISOString().slice(0,10); }
 function addDays(s,n){ const d=new Date(s+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return dstr(d); }
 function isWeekday(s){ const g=new Date(s+'T00:00:00Z').getUTCDay(); return g>0&&g<6; }
-function tradingDaysBetween(a,b){ let c=0; for(let s=a; s<=b; s=addDays(s,1)) if(isWeekday(s)) c++; return c; }
-function nthTradingDay(start,n){ let s=start,c=isWeekday(s)?1:0; while(c<n){ s=addDays(s,1); if(isWeekday(s)) c++; } return s; }
-function fmtDate(s){ const d=new Date(s+'T00:00:00Z'); return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',timeZone:'UTC'}); }
+function tradingDaysBetween(a,b){ if(!a||!b) return 0; let c=0; for(let s=a; s<=b; s=addDays(s,1)) if(isWeekday(s)) c++; return c; }
+function nthTradingDay(start,n){ if(!start) return addDays(TODAY,30); let s=start,c=isWeekday(s)?1:0, safety=0; while(c<n && safety<1000){ s=addDays(s,1); if(isWeekday(s)) c++; safety++; } return s; }
+function fmtDate(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00Z'); return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',timeZone:'UTC'}); }
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2600); }
 
 // seeded RNG for repeatable demo data
@@ -239,7 +244,13 @@ function nextTradingDay(d,days){ const i=days.indexOf(d); return days[i+1]||addD
 // ---------- store ----------
 const KEY='tts_state_v1';
 let S, ROLE='admin', USER='admin', LIVE=false, TOKEN=null, STATUS={}, USERS=[];
-function load(){ try{ const raw=localStorage.getItem(KEY); if(raw){ S=JSON.parse(raw); S.settings={...DEFAULT_SETTINGS,...S.settings}; return; } }catch(e){} S=buildDemo(); }
+function load(){
+  try{ const raw=localStorage.getItem(KEY); if(raw){ S=JSON.parse(raw); S.settings={...DEFAULT_SETTINGS,...S.settings}; } }catch(e){}
+  if(!S) S=buildDemo();
+  if(S.traders && S.traders.length && !S.traders.some(t=>t.id===SEL.trader)){
+    SEL.trader = S.traders[0].id;
+  }
+}
 function save(){ if(!LIVE){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} } invalidate(); }
 function canEdit(){ return ROLE==='admin'; }
 
@@ -257,6 +268,9 @@ const API = {
       this.req('/settings'), this.req('/rulelog'), this.req('/status')]);
     Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status;
     if(ROLE==='admin'){ try{ USERS=await this.req('/users'); }catch(e){} }
+    if(traders && traders.length && !traders.some(t=>t.id===SEL.trader)){
+      SEL.trader = traders[0].id;
+    }
     invalidate();
   },
   saveTrader:t=>API.req('/traders/'+encodeURIComponent(t.id),{method:'PUT',body:JSON.stringify(t)}),
@@ -310,8 +324,8 @@ function checkAll(){
       }
       if(r.side!=='ANY' && t.side!==r.side) add(r.side==='BUY'?'Option buying only':'Option selling only', t.side+' trade', 'High');
       if(r.product==='MIS' && (t.product==='NRML' || t.exitDate!==t.date)) add('Intraday only', 'Carried position overnight (exit '+fmtDate(t.exitDate)+')', 'High');
-      if(r.timeFrom && toMin(t.time)<toMin(r.timeFrom)) add('Entry from '+r.timeFrom, 'Entry at '+t.time, 'Medium');
-      if(r.timeTo && toMin(t.time)>toMin(r.timeTo)) add('Entry till '+r.timeTo, 'New entry at '+t.time, 'Medium');
+      if(r.timeFrom && toMin(t.time)!==null && toMin(r.timeFrom)!==null && toMin(t.time)<toMin(r.timeFrom)) add('Entry from '+r.timeFrom, 'Entry at '+t.time, 'Medium');
+      if(r.timeTo && toMin(t.time)!==null && toMin(r.timeTo)!==null && toMin(t.time)>toMin(r.timeTo)) add('Entry till '+r.timeTo, 'New entry at '+t.time, 'Medium');
       if(r.maxTradesDay && i>=r.maxTradesDay) add('Max '+r.maxTradesDay+' trades / day', 'Took trade no. '+(i+1), 'Medium');
       if(r.maxLots && t.lots>r.maxLots) add('Max '+r.maxLots+' lots / trade', 'Took '+t.lots+' lots', 'Medium');
       const g=grossPnl(t);
@@ -340,7 +354,10 @@ function metrics(trades, capital){
   let cum=0,peak=0,mdd=0,mddDay=null; const series=[], dd=[];
   dk.forEach(d=>{ cum+=days[d]; peak=Math.max(peak,cum); const x=cum-peak; if(x<mdd){mdd=x;mddDay=d;} series.push(cum); dd.push(x); });
   let streak=0,maxStreak=0; pn.forEach(x=>{ if(x<=0){streak++;maxStreak=Math.max(maxStreak,streak);} else streak=0; });
-  const holds=T.filter(t=>t.exitDate===t.date&&t.exitTime).map(t=>toMin(t.exitTime)-toMin(t.time));
+  const holds=T.filter(t=>t.exitDate===t.date&&t.exitTime&&t.exitTime!=='OPEN').map(t=>{
+    const e=toMin(t.exitTime), s=toMin(t.time);
+    return (e!==null && s!==null && e>=s)?(e-s):null;
+  }).filter(x=>x!==null && !isNaN(x));
   const clean=T.filter(t=>!(byTrade[t.id]||[]).length).length;
   const high=T.reduce((a,t)=>a+(byTrade[t.id]||[]).filter(f=>f.level==='High').length,0);
   const flagsN=T.reduce((a,t)=>a+(byTrade[t.id]||[]).length,0);
@@ -502,7 +519,12 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
   </div>`;
 
 V.rules = () => {
-  const id=SEL.trader, r=S.rules[id]||{...DEFAULT_RULES}, dis=canEdit()?'':'disabled';
+  let id=SEL.trader;
+  if(!trader(id) && S.traders && S.traders.length){
+    id = S.traders[0].id;
+    SEL.trader = id;
+  }
+  const r=S.rules[id]||{...DEFAULT_RULES}, dis=canEdit()?'':'disabled';
   const opt=(k,arr)=>`<select id="r_${k}" ${dis}>${arr.map(x=>`<option ${String(r[k])===String(x)?'selected':''}>${x}</option>`).join('')}</select>`;
   const inp=(k,type='text')=>`<input id="r_${k}" type="${type}" value="${esc(r[k])}" ${dis}>`;
   const log=S.ruleLog.filter(l=>l.trader===id).sort((a,b)=>b.at.localeCompare(a.at));
@@ -585,7 +607,12 @@ V.flags = () => {
 };
 
 V.report = () => {
-  const t=trader(SEL.trader); if(!t) return header('Trader report','No trader');
+  let t=trader(SEL.trader);
+  if(!t && S.traders && S.traders.length){
+    t = S.traders[0];
+    SEL.trader = t.id;
+  }
+  if(!t) return header('Trader report','No trader') + '<div class="card" style="padding:40px;text-align:center;color:var(--muted)">No traders registered in system.</div>';
   let from, to=TODAY, label;
   if(SEL.range==='test'){ const w=testWindow(t); from=w.from; to=w.to; label='Test period ('+S.settings.testDays+' trading days)'; }
   else if(SEL.range==='month'){ from=TODAY.slice(0,8)+'01'; label='This month'; }
@@ -1006,7 +1033,12 @@ function linkZebu(id){
 async function refreshLive(){ if(!LIVE) return; try{ await API.syncAll(); render(); }catch(e){ toast(e.message); } }
 
 function saveRules(){
-  const id=SEL.trader, old=S.rules[id]||{}, r={};
+  let id=SEL.trader;
+  if(!trader(id) && S.traders && S.traders.length){
+    id = S.traders[0].id;
+    SEL.trader = id;
+  }
+  const old=S.rules[id]||{}, r={};
   Object.keys(DEFAULT_RULES).forEach(k=>{ let v=val('r_'+k); if(['strikeDist','maxTradesDay','maxLots','slPerLot','dailyLoss'].includes(k)) v=+v; if(k==='hedge') v=v==='true'; r[k]=v; });
   const ch=Object.keys(r).filter(k=>String(r[k])!==String(old[k])).map(k=>`${k}: ${old[k]} → ${r[k]}`);
   if(!ch.length){ toast('No changes'); return; }
@@ -1237,7 +1269,11 @@ async function exportCSV(kind){
   const {byTrade,flags}=chk(); let rows, name;
   if(kind==='trades'){ name='trade_log.csv'; rows=[[...CSV_COLS,'netPnl','flags'],...S.trades.map(t=>[...CSV_COLS.map(k=>t[k]),tradePnl(t).toFixed(2),(byTrade[t.id]||[]).map(f=>f.rule).join(' | ')])]; }
   else if(kind==='flags'){ name='red_flags.csv'; rows=[['date','time','trader','rule','what he did','level'],...flags.map(f=>[f.trade.date,f.trade.time,trader(f.trade.trader)?.name,f.rule,f.did,f.level])]; }
-  else if(kind==='compare'||kind==='report'){ name=kind==='report'?'report_'+SEL.trader+'.csv':'compare_traders.csv'; const list=kind==='report'?[trader(SEL.trader)]:S.traders;
+  else if(kind==='compare'||kind==='report'){
+    const curTr = trader(SEL.trader) || (S.traders && S.traders[0]);
+    const trId = curTr ? curTr.id : (SEL.trader || 'trader');
+    name=kind==='report'?'report_'+trId+'.csv':'compare_traders.csv';
+    const list=kind==='report'?(curTr?[curTr]:[]):S.traders;
     rows=[['trader','status','test day','pnl','accuracy','rr','max dd','max dd %','profit factor','rule-follow','high flags','trades/day','intraday %','manual %','result'],...list.map(t=>{ const sc=scorecard(t),m=sc.m; return [t.name,t.status,sc.day,m.total.toFixed(0),m.accuracy.toFixed(1),(m.rr||0).toFixed(2),m.mdd.toFixed(0),m.mddPct.toFixed(1),(m.pf||0).toFixed(2),m.ruleFollow.toFixed(1),m.high,m.tpd.toFixed(1),m.intraday.toFixed(0),m.manual.toFixed(0),sc.result]; })]; }
   else { const g=S.groups.find(x=>x.id===SEL.group); name='group_'+(g?.name||'').replace(/\W+/g,'_')+'.csv'; rows=[['account','trader','broker','net pnl'],...(g?.accounts||[]).map(a=>{ const ac=account(a); return [ac?.name,trader(ac?.trader)?.name,ac?.broker,S.trades.filter(t=>t.account===a).reduce((s,t)=>s+tradePnl(t),0).toFixed(0)]; })]; }
   const csv=toCSV(rows);
