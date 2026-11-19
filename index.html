@@ -843,28 +843,42 @@ function ruleSummary(r){ return [
 
 V.trades = () => {
   const F=SEL.tradeFilter, {byTrade}=chk();
-  let list=S.trades.filter(t=>(!F.trader||belongsToSelection(t,F.trader))&&(!F.from||t.date>=F.from)&&(!F.to||t.date<=F.to));
+  let list=S.trades.filter(t=>{
+    if(t.open) return false;
+    const dKey = t.exitDate || t.date;
+    return (!F.trader||belongsToSelection(t,F.trader))&&(!F.from||dKey>=F.from)&&(!F.to||dKey<=F.to);
+  });
   if(F.flag==='flag') list=list.filter(t=>byTrade[t.id]?.length); if(F.flag==='ok') list=list.filter(t=>!byTrade[t.id]?.length);
-  list.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
-  const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+tradePnl(t),0);
+  list.sort((a,b)=>((b.exitDate||b.date)+(b.exitTime||b.time||'')).localeCompare((a.exitDate||a.date)+(a.exitTime||a.time||'')));
+  const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+netTradePnl(t),0);
   const selCount = SELECTED_TRADE_IDS.size;
-  return header('Trade log','One row per trade — pulled from the broker (read-only API) or uploaded trade book', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
+  return header('Trade log','Closed trades — exact broker execution records', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
   `<div class="card" style="margin-bottom:14px"><div class="row">${traderSelect('tfTr',F.trader,true)}
     <select id="tfFlag"><option value="">All trades</option><option value="flag" ${F.flag==='flag'?'selected':''}>With red flag</option><option value="ok" ${F.flag==='ok'?'selected':''}>Clean (OK)</option></select>
     <input type="date" id="tfFrom" value="${F.from}"> → <input type="date" id="tfTo" value="${F.to}">
     <button class="btn sm" onclick="applyTF()">Apply</button><button class="btn sm" onclick="SEL.tradeFilter={trader:'',flag:'',from:'',to:''};render()">Clear</button>
-    <div style="flex:1"></div><span class="muted">${list.length} trades · Net <b class="${cls(tot)}">${inrS(tot)}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
+    <div style="flex:1"></div><span class="muted">${list.length} closed trades · Net <b class="${cls(tot)}">${inrS(tot)}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
   <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr>
     ${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTrades" onchange="toggleSelectAllTrades(this.checked)" title="Select all shown"></th>`:''}
-    <th>Date</th><th>Time</th><th>Trader</th><th>Account</th><th>Symbol</th><th>Strike</th><th>Spot</th><th>Side</th><th class="n">Lots</th><th class="n">Entry</th><th class="n">Exit</th><th>Product</th><th>Source</th><th class="n">Charges</th><th class="n">Net P&L</th><th>Check</th>
+    <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Charges</th><th class="n">Realized P&L</th><th>Check</th>
     ${canEdit()?`<th></th>`:''}
   </tr>
-  ${shown.map(t=>{ const f=byTrade[t.id]||[], hasPnl=!(t.open&&(t.pnl===null||t.pnl===undefined)), p=hasPnl?tradePnl(t):null, m=moneyness(t,S.settings.strikeStep), isSel=SELECTED_TRADE_IDS.has(t.id); return `<tr class="click" onclick="openTrade('${t.id}')">
+  ${shown.map(t=>{
+    const f=byTrade[t.id]||[], rp=tradePnl(t), np=netTradePnl(t), isSel=SELECTED_TRADE_IDS.has(t.id);
+    return `<tr class="click" onclick="openTrade('${t.id}')">
     ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" class="trade-chk" value="${t.id}" ${isSel?'checked':''} onchange="onTradeChkChange(this)"></td>`:''}
-    <td class="mono">${fmtDate(t.date)}</td><td class="mono">${t.time}</td><td>${esc(trader(t.trader)?.name||t.trader)}</td><td>${esc(account(t.account)?.name||t.account)}</td>
-    <td>${t.symbol}</td><td class="mono">${t.strike||''} ${t.opt||''} <span class="muted" style="font-size:11px">${mLabel(m.d)}</span></td><td class="mono">${t.spot?Math.round(t.spot).toLocaleString('en-IN'):'—'}</td><td>${t.side}</td><td class="n">${t.lots}</td>
-    <td class="n">${Number(t.entry||0).toFixed(2)}</td><td class="n">${t.open?'<span class="pill p-test">OPEN</span> '+(t.exit!=null?Number(t.exit).toFixed(2):'—'):Number(t.exit||0).toFixed(2)}</td><td>${t.product==='NRML'||(t.exitDate&&t.exitDate!==t.date)?'NRML (CF)':'MIS'}</td><td>${t.source}</td><td class="n">${t.chargesEstimated?'~':''}${inr(t.charges)}</td>
-    <td class="n ${p!==null?cls(p):'muted'}">${p!==null?inr(p):'Pending LTP'}</td><td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td>
+    <td class="mono">${fmtDate(t.date)} ${esc(t.time||'')}</td>
+    <td class="mono">${fmtDate(t.exitDate||t.date)} ${esc(t.exitTime||'')}</td>
+    <td>${esc(account(t.account)?.name||t.account)}</td>
+    <td class="n ${cls(np)}">${inr(np)}</td>
+    <td>${esc(t.symbol)} ${t.strike||''} ${esc(t.opt||'')}</td>
+    <td>${esc(t.side)}</td>
+    <td class="n">${t.lots}</td>
+    <td class="n">${Number(t.entry||0).toFixed(2)}</td>
+    <td class="n">${Number(t.exit||0).toFixed(2)}</td>
+    <td class="n">${inr(t.charges||0)}</td>
+    <td class="n ${cls(rp)}">${inr(rp)}</td>
+    <td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td>
     ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:right"><button class="btn sm danger" style="padding:2px 7px;font-size:11px;line-height:1" onclick="delTrade('${t.id}')" title="Delete this trade">✕</button></td>`:''}
   </tr>`; }).join('')}
   </table></div></div>`;
@@ -963,7 +977,7 @@ V.report = () => {
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div style="font-size:12.5px;color:${tr.length ? 'var(--text)' : 'var(--muted)'}">
-        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>Realised Profit: <span class="${cls(dispRealised)}">${inr(dispRealised)}</span></b> · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
+        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>Realised P&L: <span class="${cls(dispRealised)}">${inr(dispRealised)}</span></b> · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
         ${staleWarning}
       </div>
       <button class="btn sm pri" onclick="onTraderChange('${t.id}')">🔄 Fetch Live Zebu</button>
@@ -980,7 +994,7 @@ V.report = () => {
   todaySyncBar +
   `<div class="grid k7">
     ${kpi('Total P&L', inrS(dispTotal), m.n + ' trades', cls(dispTotal))}
-    ${kpi('Realised Profit', inrS(dispRealised), closedTr.length + ' closed trades', cls(dispRealised))}
+    ${kpi('Realised P&L', inrS(dispRealised), closedTr.length + ' closed trades', cls(dispRealised))}
     ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
     ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
     ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
