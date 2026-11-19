@@ -714,7 +714,7 @@ V.overview = () => {
   const cnt = s => S.traders.filter(t => t.status === s).length;
   const periodTitle = R === 'today' ? 'today' : R === 'week' ? 'last week' : R === 'month' ? 'last month' : R === 'custom' ? 'custom' : 'all time';
 
-  return header('Overview', rangeLabel + ' · all traders', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
+  return header('Overview', rangeLabel + ' · all trades', `${LIVE?`<button class="btn" onclick="syncNow(this)" style="margin-right:6px;background:#dcfce7;border:2px solid #15803d;color:#111111;font-weight:700;box-shadow:0 3px 6px rgba(21,128,61,.22)">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')" style="margin-right:6px;background:#dcfce7;border:2px solid #15803d;color:#111111;font-weight:700;box-shadow:0 3px 6px rgba(21,128,61,.22)">Import trades</button><button class="btn" onclick="go('flags')" style="background:#dc2626;border:2px solid #991b1b;color:#ffffff;font-weight:700;box-shadow:0 3px 6px rgba(220,38,38,.25)">View red flags</button>`) +
   `<div class="card" style="margin-bottom:14px"><div class="row">
     <div class="tabs">${[['today','Today'],['week','Last week'],['month','Last month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${R===k?'on':''}" onclick="SEL.ovRange='${k}';render()">${l}</button>`).join('')}</div>
     ${R==='custom'?`<input type="date" id="ovFrom" value="${SEL.ovFrom}"><input type="date" id="ovTo" value="${SEL.ovTo}"><button class="btn sm" onclick="SEL.ovFrom=$('#ovFrom').value;SEL.ovTo=$('#ovTo').value;render()">Go</button>`:''}
