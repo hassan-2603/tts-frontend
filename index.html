@@ -355,6 +355,7 @@ const API = {
   deleteAccount:id=>API.req('/accounts/'+encodeURIComponent(id),{method:'DELETE'}),
   deleteAccountsBulk:ids=>API.req('/accounts/delete-bulk',{method:'POST',body:JSON.stringify({ids})}),
   saveRules:(id,r,change)=>API.req('/rules/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({rules:r,change})}),
+  deleteRules:id=>API.req('/rules/'+encodeURIComponent(id),{method:'DELETE'}),
   importTrades:rows=>API.req('/trades/import',{method:'POST',body:JSON.stringify(rows)}),
   deleteTrade:id=>API.req('/trades/'+encodeURIComponent(id),{method:'DELETE'}),
   deleteTradesBulk:ids=>API.req('/trades/delete-bulk',{method:'POST',body:JSON.stringify({ids})}),
@@ -779,16 +780,18 @@ V.traders = () => {
 
 V.rules = () => {
   let id=SEL.trader;
-  if(!trader(id) && S.traders && S.traders.length){
+  if(!trader(id) && !account(id) && !S.accounts.some(a=>a.zebu_uid===id) && S.traders && S.traders.length){
     id = S.traders[0].id;
     SEL.trader = id;
   }
   const r=S.rules[id]||{...DEFAULT_RULES}, dis=canEdit()?'':'disabled';
-  const opt=(k,arr)=>`<select id="r_${k}" ${dis}>${arr.map(x=>`<option ${String(r[k])===String(x)?'selected':''}>${x}</option>`).join('')}</select>`;
-  const inp=(k,type='text')=>`<input id="r_${k}" type="${type}" value="${esc(r[k])}" ${dis}>`;
+  const clrBtn=(k)=> canEdit() ? `<button type="button" class="btn sm" style="padding:2px 6px;font-size:11px;line-height:1;min-width:26px" onclick="clearRuleField('${k}')" title="Clear / turn off this rule">✕</button>` : '';
+  const opt=(k,arr)=>`<div style="display:flex;gap:5px;align-items:center"><select id="r_${k}" ${dis} style="flex:1">${arr.map(x=>`<option ${String(r[k])===String(x)?'selected':''}>${x}</option>`).join('')}</select>${clrBtn(k)}</div>`;
+  const inp=(k,type='text')=>`<div style="display:flex;gap:5px;align-items:center"><input id="r_${k}" type="${type}" value="${esc(r[k]??'')}" ${dis} style="flex:1">${clrBtn(k)}</div>`;
   const log=S.ruleLog.filter(l=>l.trader===id).sort((a,b)=>b.at.localeCompare(a.at));
+  const ownerName = trader(id)?.name || account(id)?.name || S.accounts.find(a=>a.zebu_uid===id)?.name || id;
   return header('Rule book','Understand his system, save it as rules. Every change is saved with date and who changed it.', traderSelect('selTr',id)) +
-  `<div class="grid c21"><div class="card"><h3>${esc(trader(id)?.name)}'s rules</h3>
+  `<div class="grid c21"><div class="card"><h3>${esc(ownerName)}'s rules</h3>
     <div class="form">
       <label class="f">Instrument / index ${opt('instrument',['BANKNIFTY','NIFTY','FINNIFTY','SENSEX','ANY'])}</label>
       <label class="f">Expiry choice ${opt('expiry',['Weekly','Monthly','ANY'])}</label>
@@ -805,19 +808,19 @@ V.rules = () => {
       <label class="f">Manual / algo ${opt('source',['ANY','Manual','Algo'])}</label>
       <label class="f">Hedge required ${opt('hedge',['false','true'])}</label>
     </div>
-    ${canEdit()?`<div class="row" style="margin-top:14px"><button class="btn pri" onclick="saveRules()">Save rules</button><span class="muted" style="font-size:12px">Saving re-checks every past trade against the new rules.</span></div>`:`<div class="note" style="margin-top:12px">Viewer role — read only.</div>`}
+    ${canEdit()?`<div class="row" style="margin-top:14px;flex-wrap:wrap;gap:8px"><button class="btn pri" onclick="saveRules()">Save rules</button><button class="btn" type="button" onclick="undoRuleEdits()">Undo changes</button><button class="btn danger" type="button" onclick="deleteAllRulesForAccount()">Delete all rules</button><span class="muted" style="font-size:12px">Click ✕ on any rule to turn it off, then Save — red flags for removed rules will be cleared.</span></div>`:`<div class="note" style="margin-top:12px">Viewer role — read only.</div>`}
   </div>
   <div><div class="card"><h3>In plain words</h3>${ruleSummary(r).map(x=>`<div style="padding:5px 0;border-bottom:1px solid #1c2640">${x}</div>`).join('')}</div>
   <div class="card" style="margin-top:14px"><h3>Change history</h3>${log.map(l=>`<div style="padding:6px 0;border-bottom:1px solid #1c2640;font-size:12.5px"><span class="mono muted">${l.at}</span> · <b>${esc(l.by)}</b><br>${esc(l.change)}</div>`).join('')||'<span class="muted">No changes yet</span>'}</div></div></div>`;
 };
 function ruleSummary(r){ return [
-  `Instrument: <b>${r.instrument}</b> · ${r.expiry} expiry`,
-  `Strike: <b>${r.strikeMode==='ANY'?'any':r.strikeMode==='ATM'?'ATM only':'Only '+r.strikeDist+' strike '+r.strikeMode}</b>`,
-  `Trade type: <b>${r.side==='ANY'?'buy or sell':r.side==='BUY'?'buying only':'selling only'}</b>, <b>${r.product==='MIS'?'intraday only — no carry forward':'carry forward allowed'}</b>`,
-  `Entry time: <b>${r.timeFrom} to ${r.timeTo}</b>`,
-  `Max <b>${r.maxTradesDay}</b> trades/day · max <b>${r.maxLots}</b> lots/trade`,
-  `Stop-loss: max <b>${inr(+r.slPerLot)}</b> per lot · daily loss <b>${inr(+r.dailyLoss)}</b> → stop for the day`,
-  `Placed by: <b>${r.source==='ANY'?'manual or algo':r.source}</b>${String(r.hedge)==='true'?' · <b>hedge required</b>':''}` ]; }
+  `Instrument: <b>${r.instrument||'ANY'}</b> · ${r.expiry||'ANY'} expiry`,
+  `Strike: <b>${!r.strikeMode||r.strikeMode==='ANY'?'any':r.strikeMode==='ATM'?'ATM only':'Only '+r.strikeDist+' strike '+r.strikeMode}</b>`,
+  `Trade type: <b>${!r.side||r.side==='ANY'?'buy or sell':r.side==='BUY'?'buying only':'selling only'}</b>, <b>${r.product==='MIS'?'intraday only — no carry forward':'carry forward allowed'}</b>`,
+  `Entry time: <b>${r.timeFrom||'Any'} to ${r.timeTo||'Any'}</b>`,
+  `Max <b>${+r.maxTradesDay>0?r.maxTradesDay:'Unlimited'}</b> trades/day · max <b>${+r.maxLots>0?r.maxLots:'Unlimited'}</b> lots/trade`,
+  `Stop-loss: max <b>${+r.slPerLot>0?inr(+r.slPerLot):'Off'}</b> per lot · daily loss <b>${+r.dailyLoss>0?inr(+r.dailyLoss):'Off'}</b> → stop for the day`,
+  `Placed by: <b>${!r.source||r.source==='ANY'?'manual or algo':r.source}</b>${String(r.hedge)==='true'?' · <b>hedge required</b>':''}` ]; }
 
 V.trades = () => {
   const F=SEL.tradeFilter, {byTrade}=chk();
@@ -1704,18 +1707,57 @@ async function refreshLive(){
   }
 }
 
+const NO_RULES = {
+  instrument:'ANY', expiry:'ANY', strikeMode:'ANY', strikeDist:0, side:'ANY', product:'ANY',
+  timeFrom:'', timeTo:'', maxTradesDay:0, maxLots:0, slPerLot:0, dailyLoss:0, hedge:false, source:'ANY'
+};
+function clearRuleField(k){
+  const el = document.getElementById('r_' + k);
+  if(!el) return;
+  if(['instrument','expiry','side','strikeMode','product','source'].includes(k)) el.value = 'ANY';
+  else if(k === 'hedge') el.value = 'false';
+  else if(['timeFrom','timeTo'].includes(k)) el.value = '';
+  else el.value = '0';
+  toast('Cleared rule "' + k + '" — click Save rules to apply & remove its red flags');
+}
+function undoRuleEdits(){
+  render();
+  toast('Unsaved rule edits reverted');
+}
+async function deleteAllRulesForAccount(){
+  let id = SEL.trader;
+  if(!trader(id) && !account(id) && !S.accounts.some(a=>a.zebu_uid===id) && S.traders && S.traders.length){
+    id = S.traders[0].id;
+    SEL.trader = id;
+  }
+  const ownerName = trader(id)?.name || account(id)?.name || id;
+  if(!confirm(`Delete all rules for "${ownerName}" (${id}) and remove all red flags for this account?`)) return;
+  S.rules[id] = {...NO_RULES};
+  const change = 'All rules deleted for account';
+  S.ruleLog.push({trader:id, at:TODAY+' '+new Date().toTimeString().slice(0,5), by:USER, change});
+  VIOLATIONS = VIOLATIONS.filter(v => v.account !== id && v.trader !== id);
+  save();
+  if(LIVE){
+    try {
+      await API.deleteRules(id).catch(() => API.saveRules(id, {...NO_RULES}, change));
+      await API.syncAll();
+    } catch(e){ toast('Server: ' + e.message); }
+  }
+  render();
+  toast('All rules deleted and red flags removed');
+}
 function saveRules(){
   let id=SEL.trader;
-  if(!trader(id) && S.traders && S.traders.length){
+  if(!trader(id) && !account(id) && !S.accounts.some(a=>a.zebu_uid===id) && S.traders && S.traders.length){
     id = S.traders[0].id;
     SEL.trader = id;
   }
   const old=S.rules[id]||{}, r={};
-  Object.keys(DEFAULT_RULES).forEach(k=>{ let v=val('r_'+k); if(['strikeDist','maxTradesDay','maxLots','slPerLot','dailyLoss'].includes(k)) v=+v; if(k==='hedge') v=v==='true'; r[k]=v; });
+  Object.keys(DEFAULT_RULES).forEach(k=>{ let v=val('r_'+k); if(['strikeDist','maxTradesDay','maxLots','slPerLot','dailyLoss'].includes(k)) v=Number(v)||0; if(k==='hedge') v=v==='true'; r[k]=v; });
   const ch=Object.keys(r).filter(k=>String(r[k])!==String(old[k])).map(k=>`${k}: ${old[k]} → ${r[k]}`);
   if(!ch.length){ toast('No changes'); return; }
   S.rules[id]=r; const change=ch.join(' · '); S.ruleLog.push({trader:id,at:TODAY+' '+new Date().toTimeString().slice(0,5),by:USER,change});
-  save(); liveCall(()=>API.saveRules(id,r,change)); render(); toast('Rules saved — trades re-checked');
+  save(); liveCall(()=>API.saveRules(id,r,change)); render(); toast('Rules saved — trades re-checked & old red flags cleared');
 }
 function editTrade(id){
   closeModal();
