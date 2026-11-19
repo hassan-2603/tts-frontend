@@ -709,7 +709,7 @@ function flagTable(list, showDate=true){
     const st = f.status || (f.trade.is_finalized || (f.trade.date < TODAY && !f.trade.open) ? 'HISTORICAL' : 'ACTIVE');
     const stPill = st==='ACTIVE'?'<span class="pill p-high">ACTIVE</span>':st==='RESOLVED'?'<span class="pill p-pass">RESOLVED</span>':st==='UNEVALUATED'?'<span class="pill p-watch">MISSING DATA</span>':'<span class="pill p-low">HISTORICAL</span>';
     const accLabel = f.trade.account ? ` <span class="muted mono" style="font-size:11px">(${esc(f.trade.account)})</span>` : '';
-    return `<tr class="click" onclick="openTrade('${f.trade.id}')">${showDate?`<td class="mono">${fmtDate(f.trade.date)}</td>`:''}<td class="mono">${f.trade.time}</td><td>${esc(trader(f.trade.trader)?.name||f.trade.trader)}${accLabel}</td><td>${esc(f.rule)}</td><td class="flagtxt">${esc(f.did)}</td><td>${stPill}</td><td>${levelPill(f.level)}</td></tr>`;
+    return `<tr class="click" onclick="openFlagDetail('${esc(f.trade.id)}','${esc(f.rule).replace(/'/g,"\\'")}')">${showDate?`<td class="mono">${fmtDate(f.trade.date)}</td>`:''}<td class="mono">${f.trade.time} IST</td><td>${esc(trader(f.trade.trader)?.name||f.trade.trader)}${accLabel}</td><td>${esc(f.rule)}</td><td class="flagtxt">${esc(f.did)}</td><td>${stPill}</td><td>${levelPill(f.level)}</td></tr>`;
   }).join('')}</table></div>`;
 }
 
@@ -938,7 +938,7 @@ V.report = () => {
   const dispRealised = closedPnl;
   const staleAcc = tAccounts.find(a => a.is_stale || a.link === 'Login expired' || a.link === 'REAUTH_REQUIRED');
   const lastSyncStr = tAccounts.map(a => a.last_sync_at).filter(Boolean).sort().pop() || STATUS.poll?.last || '';
-  const syncTimeShort = lastSyncStr ? (lastSyncStr.includes('T') ? lastSyncStr.split('T')[1].slice(0,8) : lastSyncStr.slice(11,19)) : '';
+  const syncTimeShort = fmtIST(lastSyncStr, true);
   const staleWarning = staleAcc ? `<span class="pill p-watch" style="margin-left:8px" title="${esc(staleAcc.sync_error || 'Broker API unavailable — showing last retained data')}">⚠️ STALE DATA${syncTimeShort?' · Last sync '+esc(syncTimeShort):''}${staleAcc.sync_error?' · '+esc(staleAcc.sync_error.slice(0,60)):''}</span>` : (syncTimeShort ? `<span class="muted mono" style="font-size:11.5px;margin-left:8px">Last sync: ${esc(syncTimeShort)}</span>` : '');
 
   const todaySyncBar = range==='today' ? `
@@ -1237,6 +1237,105 @@ function modal(html){ $('#modal').innerHTML=html; $('#mbg').classList.add('on');
 function closeModal(){ $('#mbg').classList.remove('on'); }
 $('#mbg').addEventListener('click',e=>{ if(e.target.id==='mbg') closeModal(); });
 function val(id){ const e=document.getElementById(id); return e? e.value : undefined; }
+
+function fmtIST(ts, withSec=true){
+  if(!ts) return '';
+  try {
+    let s = String(ts).trim();
+    if(s.includes('T') && !/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z';
+    const d = new Date(s);
+    if(isNaN(d.getTime())) return (s.includes('T') ? s.split('T')[1].slice(0, withSec?8:5) : s) + ' IST';
+    return d.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(withSec ? { second: '2-digit' } : {}),
+      hour12: true
+    }).toUpperCase() + ' IST';
+  } catch(e){ return ''; }
+}
+
+function explainFlagEasy(f, t, r){
+  const rule = String(f.rule || '');
+  const low = rule.toLowerCase();
+  const who = trader(t.trader)?.name || t.account || 'The trader';
+  if(low.startsWith('instrument:')){
+    return `${who} is only allowed to trade <b>${esc(r.instrument)}</b> according to the Rule Book, but took a trade in <b>${esc(t.symbol)}</b> instead.`;
+  }
+  if(low.startsWith('strike:')){
+    const expStr = expectedStrike(t, r, S.settings.strikeStep);
+    const modeLbl = r.strikeMode === 'ATM' ? 'ATM' : `${r.strikeDist} ${r.strikeMode}`;
+    return `The rule allows only <b>${esc(modeLbl)}</b> strikes. When this trade was taken at ${esc(t.time)} IST, the spot price was <b>${t.spot ? Math.round(t.spot).toLocaleString('en-IN') : 'n/a'}</b>, so the allowed strike was <b>${expStr} ${esc(t.opt||'')}</b> — but ${who} traded <b>${t.strike} ${esc(t.opt||'')}</b>.`;
+  }
+  if(low.includes('buying only') || low.includes('selling only')){
+    return `This account's rule allows <b>${r.side === 'BUY' ? 'Option Buying (BUY) only' : 'Option Selling (SELL) only'}</b>, but ${who} placed a <b>${esc(t.side)}</b> trade.`;
+  }
+  if(low.includes('intraday only')){
+    return `This account is restricted to <b>Intraday (MIS) trades only</b> and positions must be closed the same day. However, this trade was placed as <b>${esc(t.product)}</b>${(t.exitDate && t.exitDate !== t.date) || (t.open && t.date < TODAY) ? ' and carried overnight' : ''}.`;
+  }
+  if(low.startsWith('entry from')){
+    return `Trading is only allowed to start from <b>${esc(r.timeFrom)} IST</b> onwards, but ${who} entered this trade early at <b>${esc(t.time)} IST</b>.`;
+  }
+  if(low.startsWith('entry till')){
+    return `New trade entries are only allowed until <b>${esc(r.timeTo)} IST</b>, but ${who} entered a new trade late at <b>${esc(t.time)} IST</b>.`;
+  }
+  if(low.startsWith('max ') && low.includes('trades / day')){
+    return `The Rule Book allows a maximum of <b>${r.maxTradesDay} trades per day</b>, but ${who} exceeded the daily limit (${esc(f.did)}).`;
+  }
+  if(low.startsWith('max ') && low.includes('lots / trade')){
+    return `The maximum allowed position size is <b>${r.maxLots} lot(s) per trade</b>, but ${who} took <b>${t.lots} lot(s)</b> in this trade.`;
+  }
+  if(low.startsWith('sl max')){
+    return `The maximum allowed stop-loss is <b>${inr(r.slPerLot)} per lot</b>, but the loss on this trade grew bigger than the allowed stop-loss (${esc(f.did)}).`;
+  }
+  if(low.startsWith('stop after')){
+    return `The account already crossed its daily maximum loss limit of <b>${inr(r.dailyLoss)}</b>, which means trading must stop for the rest of the day — but ${who} continued taking new trades.`;
+  }
+  if(low.includes('trades only')){
+    return `This account is only permitted to take <b>${esc(r.source)}</b> trades, but this trade was placed as <b>${esc(t.source)}</b>.`;
+  }
+  if(low.includes('hedge required')){
+    return `The Rule Book requires a protective <b>hedge position</b> to be open along with the trade, but this trade was taken without a hedge.`;
+  }
+  if(low.includes('expiry only')){
+    return `This account is only allowed to trade <b>${esc(r.expiry)} expiry</b> contracts, but ${who} traded a <b>${esc(t.expiryType)}</b> expiry contract.`;
+  }
+  return `${esc(f.did)} (Rule broken: <b>${esc(f.rule)}</b>).`;
+}
+
+function openFlagDetail(tradeId, clickedRule){
+  const t = S.trades.find(x => x.id === tradeId);
+  if(!t) return;
+  const {byTrade} = chk();
+  const flagsForTrade = byTrade[tradeId] || [];
+  const f = flagsForTrade.find(x => x.rule === clickedRule) || flagsForTrade[0];
+  if(!f){ openTrade(tradeId); return; }
+  const r = S.rules[t.account] || S.rules[t.trader] || DEFAULT_RULES;
+  const easyReason = explainFlagEasy(f, t, r);
+  const who = trader(t.trader)?.name || t.account || t.trader;
+  const st = f.status || (t.is_finalized || (t.date < TODAY && !t.open) ? 'HISTORICAL' : 'ACTIVE');
+  modal(`
+    <h2>🚩 Why This Red Flag Occurred</h2>
+    <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      ${levelPill(f.level)}
+      <span class="pill ${st==='ACTIVE'?'p-high':'p-low'}">${esc(st)}</span>
+      <span class="muted" style="font-size:12.5px"><b>${esc(who)}</b> · Account <span class="mono">${esc(t.account||'—')}</span> · ${fmtDate(t.date)} at <b>${esc(t.time)} IST</b></span>
+    </div>
+    <div style="background:#0f172a;border:1px solid #ef4444;border-radius:10px;padding:16px;margin-bottom:14px">
+      <div style="font-size:12px;color:#f87171;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Simple Explanation</div>
+      <div style="font-size:14.5px;line-height:1.55;color:#f8fafc">${easyReason}</div>
+    </div>
+    <div class="grid k3" style="margin-bottom:14px">
+      ${kpi('Rule Broken', esc(f.rule), '')}
+      ${kpi('What Happened', esc(f.did), '')}
+      ${kpi('Trade', esc(t.symbol)+' '+(t.strike||'')+' '+esc(t.opt||''), `${esc(t.side)} · ${t.lots} lot(s) · ${esc(t.product)}`)}
+    </div>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="btn" onclick="openTrade('${esc(t.id)}')">View Full Trade Details</button>
+      <button class="btn pri" onclick="closeModal()">Close</button>
+    </div>
+  `);
+}
 
 function openTrade(id){
   const t=S.trades.find(x=>x.id===id); if(!t) return;
@@ -1590,7 +1689,7 @@ function linkPill(a){
   const isLinked = a.link === 'Linked';
   const ws = a.ws_status ? `<span class="pill ${a.ws_status==='REAL-TIME'?'p-live':a.ws_status==='DEGRADED'?'p-watch':'p-stop'}" style="margin-left:4px;font-size:9.5px;padding:1px 5px">${esc(a.ws_status)}</span>` : '';
   const staleTag = a.is_stale ? `<span class="pill p-watch" style="margin-left:4px;font-size:9.5px;padding:1px 5px" title="${esc(a.sync_error||'Broker API temporarily unavailable — displaying last retained data')}">STALE</span>` : '';
-  const syncTs = a.last_sync_at ? `<span class="muted mono" style="font-size:10.5px;margin-left:5px" title="Last successful sync: ${esc(a.last_sync_at)}">⟳ ${esc(a.last_sync_at.includes('T')?a.last_sync_at.split('T')[1].slice(0,5):a.last_sync_at.slice(11,16))}</span>` : '';
+  const syncTs = a.last_sync_at ? `<span class="muted mono" style="font-size:10.5px;margin-left:5px" title="Last successful sync: ${esc(fmtIST(a.last_sync_at, true))}">⟳ ${esc(fmtIST(a.last_sync_at, false))}</span>` : '';
   if(isExpired){
     return `<span class="pill-disconnected" style="font-size:11px;padding:2px 7px" title="Broker token expired — click Re-link to authorize"><span style="color:#f59e0b">⚠️</span> Login expired (Re-auth needed)</span>${staleTag}${syncTs}`;
   } else if(isLinked){
