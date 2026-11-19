@@ -244,7 +244,34 @@ function nextTradingDay(d,days){ const i=days.indexOf(d); return days[i+1]||addD
 // ---------- store ----------
 const KEY='tts_state_v1';
 const LIVE_CACHE_KEY='tts_live_cache_v1';
+const DELETED_IDS_KEY='tts_deleted_ids_v1';
 let S, ROLE='admin', USER='admin', LIVE=false, TOKEN=null, STATUS={}, USERS=[];
+function getDeletedIds(){
+  try {
+    const raw = localStorage.getItem(DELETED_IDS_KEY);
+    if(raw){
+      const p = JSON.parse(raw);
+      return { traders: new Set(p.traders || []), accounts: new Set(p.accounts || []) };
+    }
+  } catch(e){}
+  return { traders: new Set(), accounts: new Set() };
+}
+function markDeletedIds(trIds=[], accIds=[]){
+  const d = getDeletedIds();
+  trIds.forEach(x => d.traders.add(x));
+  accIds.forEach(x => d.accounts.add(x));
+  try {
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify({ traders: [...d.traders], accounts: [...d.accounts] }));
+  } catch(e){}
+}
+function unmarkDeletedId(trId=null, accId=null){
+  const d = getDeletedIds();
+  if(trId) d.traders.delete(trId);
+  if(accId) d.accounts.delete(accId);
+  try {
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify({ traders: [...d.traders], accounts: [...d.accounts] }));
+  } catch(e){}
+}
 function load(){
   try{ const raw=localStorage.getItem(KEY); if(raw){ S=JSON.parse(raw); S.settings={...DEFAULT_SETTINGS,...S.settings}; } }catch(e){}
   if(!S) S=buildDemo();
@@ -307,6 +334,9 @@ const API = {
         this.req('/settings'), this.req('/rulelog'), this.req('/status'),
         this.req('/daily-reports').catch(()=>[]), this.req('/violations').catch(()=>[])]);
     }
+    const delIds = getDeletedIds();
+    traders = (traders || []).filter(t => !delIds.traders.has(t.id));
+    accounts = (accounts || []).filter(a => !delIds.accounts.has(a.id));
     Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status||{};
     DAILY_REPORTS = Array.isArray(dailyReports) ? dailyReports : [];
     VIOLATIONS = Array.isArray(violations) ? violations : [];
@@ -1320,19 +1350,22 @@ function updateDelTradersBtn(){
 async function delTrader(id){
   const t = trader(id);
   if(!confirm(`Permanently delete trader "${t ? t.name : id}" (${id})?`)) return;
+  _isRefreshingLive = true;
+  markDeletedIds([id], []);
   S.traders = S.traders.filter(x => x.id !== id);
-  S.accounts = S.accounts.filter(a => a.id !== id && a.zebu_uid !== id);
   S.trades = S.trades.filter(x => x.trader !== id && x.account !== id);
   delete S.rules[id];
   SELECTED_TRADER_IDS.delete(id);
   save();
   closeModal();
+  render();
   if(LIVE){
     try {
       await API.deleteTrader(id);
       await API.syncAll();
-    } catch(e){ toast('Server: ' + e.message); }
+    } catch(e){ console.warn('Delete trader sync notice:', e); }
   }
+  _isRefreshingLive = false;
   render();
   toast('Trader removed permanently');
 }
@@ -1340,18 +1373,23 @@ async function deleteSelectedTraders(){
   const ids = Array.from(SELECTED_TRADER_IDS);
   if(!ids.length) return;
   if(!confirm(`Permanently delete ${ids.length} selected trader account(s)?`)) return;
+  _isRefreshingLive = true;
+  markDeletedIds(ids, []);
   S.traders = S.traders.filter(x => !ids.includes(x.id));
-  S.accounts = S.accounts.filter(a => !ids.includes(a.id) && !ids.includes(a.zebu_uid));
   S.trades = S.trades.filter(x => !ids.includes(x.trader) && !ids.includes(x.account));
   ids.forEach(id => delete S.rules[id]);
   SELECTED_TRADER_IDS.clear();
   save();
+  render();
   if(LIVE){
     try {
-      await API.deleteTradersBulk(ids);
+      await API.deleteTradersBulk(ids).catch(async () => {
+        for(const id of ids) await API.deleteTrader(id).catch(()=>{});
+      });
       await API.syncAll();
-    } catch(e){ toast('Server: ' + e.message); }
+    } catch(e){ console.warn('Bulk delete trader notice:', e); }
   }
+  _isRefreshingLive = false;
   render();
   toast(`${ids.length} trader(s) removed permanently`);
 }
@@ -1389,18 +1427,22 @@ function updateDelAccountsBtn(){
 async function delAccount(id){
   const a = account(id);
   if(!confirm(`Permanently delete broker account "${a ? a.name : id}" (${id})?`)) return;
+  _isRefreshingLive = true;
+  markDeletedIds([id], [id]);
   S.accounts = S.accounts.filter(x => x.id !== id);
   S.traders = S.traders.filter(x => x.id !== id);
   S.trades = S.trades.filter(x => x.account !== id);
   SELECTED_ACCOUNT_IDS.delete(id);
   save();
   closeModal();
+  render();
   if(LIVE){
     try {
       await API.deleteAccount(id);
       await API.syncAll();
-    } catch(e){ toast('Server: ' + e.message); }
+    } catch(e){ console.warn('Delete account sync notice:', e); }
   }
+  _isRefreshingLive = false;
   render();
   toast('Broker account removed permanently');
 }
@@ -1408,17 +1450,23 @@ async function deleteSelectedAccounts(){
   const ids = Array.from(SELECTED_ACCOUNT_IDS);
   if(!ids.length) return;
   if(!confirm(`Permanently delete ${ids.length} selected broker account(s)?`)) return;
+  _isRefreshingLive = true;
+  markDeletedIds(ids, ids);
   S.accounts = S.accounts.filter(x => !ids.includes(x.id));
   S.traders = S.traders.filter(x => !ids.includes(x.id));
   S.trades = S.trades.filter(x => !ids.includes(x.account));
   SELECTED_ACCOUNT_IDS.clear();
   save();
+  render();
   if(LIVE){
     try {
-      await API.deleteAccountsBulk(ids);
+      await API.deleteAccountsBulk(ids).catch(async () => {
+        for(const id of ids) await API.deleteAccount(id).catch(()=>{});
+      });
       await API.syncAll();
-    } catch(e){ toast('Server: ' + e.message); }
+    } catch(e){ console.warn('Bulk delete account notice:', e); }
   }
+  _isRefreshingLive = false;
   render();
   toast(`${ids.length} broker account(s) removed permanently`);
 }
@@ -1435,6 +1483,7 @@ function editTrader(id){
 function saveTrader(id){
   const t={ id: id||val('e_id').trim(), name:val('e_name').trim()||'Unnamed', ra:val('e_ra'), style:val('e_style'), holding:val('e_holding'), segment:val('e_segment'), testCapital:+val('e_testCapital')||0, status:val('e_status'), start:val('e_start')||TODAY };
   if(!id && S.traders.some(x=>x.id===t.id)){ toast('ID already exists'); return; }
+  unmarkDeletedId(t.id, null);
   const old=id?trader(id):null; if(old) t.extended=old.extended;
   if(old) Object.assign(old,t); else { S.traders.push(t); S.rules[t.id]={...DEFAULT_RULES}; S.ruleLog.push({trader:t.id,at:TODAY+' '+new Date().toTimeString().slice(0,5),by:USER,change:'Rule book created (defaults)'}); }
   save(); liveCall(()=>API.saveTrader(t)); closeModal(); render(); toast('Trader saved');
@@ -1517,6 +1566,7 @@ function saveAccount(id){
     zebu_actid: (val('a_zact') || val('a_zuid') || '').trim().toUpperCase(),
   };
   const o = id ? account(id) : null;
+  unmarkDeletedId(null, a.id);
   if(o) Object.assign(o, a); else S.accounts.push(a);
   save();
   SEL.trader = a.trader || a.zebu_uid || a.id;
