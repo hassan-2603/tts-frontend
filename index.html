@@ -42,8 +42,8 @@ main{padding:22px 28px 60px;min-width:0;background:#f4f8fc}
 .grid{display:grid;gap:14px}
 .k7{grid-template-columns:repeat(7,1fr)}.k6{grid-template-columns:repeat(6,1fr)}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.k2{grid-template-columns:1fr 1fr}
 .c21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
-.card{background:#ffffff;border:1.5px solid #111111;border-radius:var(--radius);padding:16px;color:#111111}
-.card.kpi{background:#ffffff;border:1.5px solid #111111}
+.card{background:#f4f8fc;border:2px solid #111111;border-radius:var(--radius);padding:16px;color:#111111;box-shadow:0 3px 8px rgba(17,17,17,.08)}
+.card.kpi{background:#f4f8fc;border:2px solid #111111;box-shadow:0 3px 8px rgba(17,17,17,.08)}
 .card.kpi.kpi-pos{background:#dcfce7 !important;border-color:#15803d !important}
 .card.kpi.kpi-neg{background:#fee2e2 !important;border-color:#dc2626 !important}
 .card h3{margin:0 0 12px;font-size:14px;display:flex;align-items:center;gap:8px;color:#111111}
@@ -679,7 +679,15 @@ function traderSelect(id, val, all){
 }
 function kpi(l,v,h='',c=''){
   const boxCls = c==='pos' ? ' kpi-pos' : (c==='neg' ? ' kpi-neg' : '');
-  return `<div class="card kpi${boxCls}"><div class="l">${l}</div><div class="v ${c}">${v}</div>${h?`<div class="h">${h}</div>`:''}</div>`;
+  let extraStyle = '';
+  if(String(l).toLowerCase() === 'accuracy'){
+    const p = Math.max(0, Math.min(100, parseFloat(String(v)) || 0));
+    if(p > 0){
+      const alpha = (0.18 + (p / 100) * 0.34).toFixed(2);
+      extraStyle = ` style="background:linear-gradient(90deg, rgba(34,197,94,${alpha}) ${p}%, #f4f8fc ${p}%);border-color:#15803d"`;
+    }
+  }
+  return `<div class="card kpi${boxCls}"${extraStyle}><div class="l">${l}</div><div class="v ${c}">${v}</div>${h?`<div class="h">${h}</div>`:''}</div>`;
 }
 
 // ---------- views ----------
