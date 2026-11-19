@@ -319,7 +319,11 @@ const API = {
     invalidate();
   },
   saveTrader:t=>API.req('/traders/'+encodeURIComponent(t.id),{method:'PUT',body:JSON.stringify(t)}),
+  deleteTrader:id=>API.req('/traders/'+encodeURIComponent(id),{method:'DELETE'}),
+  deleteTradersBulk:ids=>API.req('/traders/delete-bulk',{method:'POST',body:JSON.stringify({ids})}),
   saveAccount:a=>API.req('/accounts/'+encodeURIComponent(a.id),{method:'PUT',body:JSON.stringify(a)}),
+  deleteAccount:id=>API.req('/accounts/'+encodeURIComponent(id),{method:'DELETE'}),
+  deleteAccountsBulk:ids=>API.req('/accounts/delete-bulk',{method:'POST',body:JSON.stringify({ids})}),
   saveRules:(id,r,change)=>API.req('/rules/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({rules:r,change})}),
   importTrades:rows=>API.req('/trades/import',{method:'POST',body:JSON.stringify(rows)}),
   deleteTrade:id=>API.req('/trades/'+encodeURIComponent(id),{method:'DELETE'}),
@@ -678,8 +682,11 @@ function flagTable(list, showDate=true){
   }).join('')}</table></div>`;
 }
 
-V.traders = () => header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
-  `<div class="card"><div class="tbl-wrap"><table><tr><th>Trader / ID</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th>Status</th><th style="text-align:right"></th></tr>
+V.traders = () => {
+  const selTrCount = SELECTED_TRADER_IDS.size;
+  const selAccCount = SELECTED_ACCOUNT_IDS.size;
+  return header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn danger sm" id="btnDelTraders" style="display:${selTrCount?'inline-block':'none'};margin-right:6px" onclick="deleteSelectedTraders()">Delete selected traders (<span id="selTradersCount">${selTrCount}</span>)</button><button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
+  `<div class="card"><div class="tbl-wrap"><table><tr>${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTraders" onchange="toggleSelectAllTraders(this.checked)" title="Select all traders"></th>`:''}<th>Trader / ID</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th>Status</th><th style="text-align:right"></th></tr>
   ${S.traders.map(t=>{ 
     const acc=S.accounts.filter(a=>a.trader===t.id); 
     const sc=scorecard(t); 
@@ -688,21 +695,24 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
       (linkedN === acc.length ? `<span class="pill-linked" style="font-size:11px;padding:2px 7px">● ${acc.length} Linked</span>` :
        linkedN > 0 ? `<span class="pill-linked" style="font-size:11px;padding:2px 7px">● ${linkedN}/${acc.length} Linked</span>` :
        `<span class="pill-disconnected" style="font-size:11px;padding:2px 7px">● Disconnected</span>`);
+    const isSel = SELECTED_TRADER_IDS.has(t.id);
     return `<tr>
+    ${canEdit()?`<td style="text-align:center"><input type="checkbox" class="trader-chk" value="${esc(t.id)}" ${isSel?'checked':''} onchange="onTraderChkChange(this)"></td>`:''}
     <td><b>${esc(t.name)}</b><div class="muted mono" style="font-size:11.5px">${t.id}</div></td>
     <td>${accBadge}<div class="muted" style="font-size:11px;margin-top:2px">${[...new Set(acc.map(a=>a.broker))].join(', ')||'—'}</div></td>
     <td>${esc(t.ra)}</td><td>${t.style}</td><td>${t.holding}</td><td>${esc(t.segment)}</td><td class="n">${inr(t.testCapital)}</td>
     <td>${statusPill(t.status)}${t.status==='Testing'||t.status==='Watch'?`<div class="muted" style="font-size:11.5px;margin-top:3px">Day ${sc.day} of ${sc.total}</div>`:''}</td>
-    <td style="white-space:nowrap;text-align:right"><button class="btn sm" onclick="openReport('${t.id}')">Report</button> <button class="btn sm" onclick="openRules('${t.id}')">Rules</button> ${canEdit()?`<button class="btn sm" onclick="editTrader('${t.id}')">Edit</button>`:''}</td></tr>`; }).join('')}
+    <td style="white-space:nowrap;text-align:right"><button class="btn sm" onclick="openReport('${t.id}')">Report</button> <button class="btn sm" onclick="openRules('${t.id}')">Rules</button> ${canEdit()?`<button class="btn sm" onclick="editTrader('${t.id}')">Edit</button> <button class="btn sm danger" style="padding:2px 7px;font-size:11px;line-height:1" onclick="delTrader('${t.id}')" title="Delete this trader permanently">✕</button>`:''}</td></tr>`; }).join('')}
   </table></div></div>
 
   <div class="card" style="margin-top:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <h3 style="margin:0">Broker accounts (${S.accounts.length})</h3>
-      ${canEdit()?`<button class="btn sm pri" onclick="editAccount()">+ Add account</button>`:''}
+      ${canEdit()?`<div><button class="btn danger sm" id="btnDelAccounts" style="display:${selAccCount?'inline-block':'none'};margin-right:6px" onclick="deleteSelectedAccounts()">Delete selected accounts (<span id="selAccountsCount">${selAccCount}</span>)</button><button class="btn sm pri" onclick="editAccount()">+ Add account</button></div>`:''}
     </div>
-    <div class="tbl-wrap"><table><tr><th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link status</th>':''}<th>Assigned trader</th><th class="n">Trades</th>${canEdit()?'<th style="text-align:right">Actions</th>':''}</tr>
-      ${S.accounts.map(a=>`<tr>
+    <div class="tbl-wrap"><table><tr>${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllAccounts" onchange="toggleSelectAllAccounts(this.checked)" title="Select all broker accounts"></th>`:''}<th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link status</th>':''}<th>Assigned trader</th><th class="n">Trades</th>${canEdit()?'<th style="text-align:right">Actions</th>':''}</tr>
+      ${S.accounts.map(a=>{ const isAccSel = SELECTED_ACCOUNT_IDS.has(a.id); return `<tr>
+        ${canEdit()?`<td style="text-align:center"><input type="checkbox" class="account-chk" value="${esc(a.id)}" ${isAccSel?'checked':''} onchange="onAccountChkChange(this)"></td>`:''}
         <td><b>${esc(a.name)}</b><div class="muted mono" style="font-size:11.5px">${a.id}</div></td>
         <td>${esc(a.broker)}</td>
         ${LIVE?`<td class="mono"><b>${esc(a.zebu_uid||'—')}</b></td><td>${linkPill(a)}</td>`:''}
@@ -719,9 +729,10 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
               `}
             `:''}
             <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
+            <button class="btn sm danger" style="padding:2px 7px;font-size:11px;line-height:1" onclick="delAccount('${a.id}')" title="Delete this broker account permanently">✕</button>
           </td>
         `:''}
-      </tr>`).join('')}
+      </tr>`; }).join('')}
     </table></div>
   </div>
 
@@ -734,6 +745,7 @@ V.traders = () => header('Trader profiles','One page for every trader — who he
       <span>${statusPill('Stopped')} Failed or stopped</span>
     </div>
   </div>`;
+};
 
 V.rules = () => {
   let id=SEL.trader;
@@ -1275,6 +1287,142 @@ async function unlinkAccount(id){
   }
 }
 
+let SELECTED_TRADER_IDS = new Set();
+function toggleSelectAllTraders(checked){
+  const chks = document.querySelectorAll('.trader-chk');
+  chks.forEach(c => {
+    c.checked = checked;
+    if(checked) SELECTED_TRADER_IDS.add(c.value);
+    else SELECTED_TRADER_IDS.delete(c.value);
+  });
+  updateDelTradersBtn();
+}
+function onTraderChkChange(el){
+  if(el.checked) SELECTED_TRADER_IDS.add(el.value);
+  else SELECTED_TRADER_IDS.delete(el.value);
+  const allChks = document.querySelectorAll('.trader-chk');
+  const chkAll = document.getElementById('chkAllTraders');
+  if(chkAll) chkAll.checked = allChks.length > 0 && document.querySelectorAll('.trader-chk:checked').length === allChks.length;
+  updateDelTradersBtn();
+}
+function updateDelTradersBtn(){
+  const btn = document.getElementById('btnDelTraders');
+  const cnt = document.getElementById('selTradersCount');
+  if(!btn) return;
+  const count = SELECTED_TRADER_IDS.size;
+  if(count > 0){
+    btn.style.display = 'inline-block';
+    if(cnt) cnt.textContent = count;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+async function delTrader(id){
+  const t = trader(id);
+  if(!confirm(`Permanently delete trader "${t ? t.name : id}" (${id})?`)) return;
+  S.traders = S.traders.filter(x => x.id !== id);
+  S.accounts = S.accounts.filter(a => a.id !== id && a.zebu_uid !== id);
+  S.trades = S.trades.filter(x => x.trader !== id && x.account !== id);
+  delete S.rules[id];
+  SELECTED_TRADER_IDS.delete(id);
+  save();
+  closeModal();
+  if(LIVE){
+    try {
+      await API.deleteTrader(id);
+      await API.syncAll();
+    } catch(e){ toast('Server: ' + e.message); }
+  }
+  render();
+  toast('Trader removed permanently');
+}
+async function deleteSelectedTraders(){
+  const ids = Array.from(SELECTED_TRADER_IDS);
+  if(!ids.length) return;
+  if(!confirm(`Permanently delete ${ids.length} selected trader account(s)?`)) return;
+  S.traders = S.traders.filter(x => !ids.includes(x.id));
+  S.accounts = S.accounts.filter(a => !ids.includes(a.id) && !ids.includes(a.zebu_uid));
+  S.trades = S.trades.filter(x => !ids.includes(x.trader) && !ids.includes(x.account));
+  ids.forEach(id => delete S.rules[id]);
+  SELECTED_TRADER_IDS.clear();
+  save();
+  if(LIVE){
+    try {
+      await API.deleteTradersBulk(ids);
+      await API.syncAll();
+    } catch(e){ toast('Server: ' + e.message); }
+  }
+  render();
+  toast(`${ids.length} trader(s) removed permanently`);
+}
+
+let SELECTED_ACCOUNT_IDS = new Set();
+function toggleSelectAllAccounts(checked){
+  const chks = document.querySelectorAll('.account-chk');
+  chks.forEach(c => {
+    c.checked = checked;
+    if(checked) SELECTED_ACCOUNT_IDS.add(c.value);
+    else SELECTED_ACCOUNT_IDS.delete(c.value);
+  });
+  updateDelAccountsBtn();
+}
+function onAccountChkChange(el){
+  if(el.checked) SELECTED_ACCOUNT_IDS.add(el.value);
+  else SELECTED_ACCOUNT_IDS.delete(el.value);
+  const allChks = document.querySelectorAll('.account-chk');
+  const chkAll = document.getElementById('chkAllAccounts');
+  if(chkAll) chkAll.checked = allChks.length > 0 && document.querySelectorAll('.account-chk:checked').length === allChks.length;
+  updateDelAccountsBtn();
+}
+function updateDelAccountsBtn(){
+  const btn = document.getElementById('btnDelAccounts');
+  const cnt = document.getElementById('selAccountsCount');
+  if(!btn) return;
+  const count = SELECTED_ACCOUNT_IDS.size;
+  if(count > 0){
+    btn.style.display = 'inline-block';
+    if(cnt) cnt.textContent = count;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+async function delAccount(id){
+  const a = account(id);
+  if(!confirm(`Permanently delete broker account "${a ? a.name : id}" (${id})?`)) return;
+  S.accounts = S.accounts.filter(x => x.id !== id);
+  S.traders = S.traders.filter(x => x.id !== id);
+  S.trades = S.trades.filter(x => x.account !== id);
+  SELECTED_ACCOUNT_IDS.delete(id);
+  save();
+  closeModal();
+  if(LIVE){
+    try {
+      await API.deleteAccount(id);
+      await API.syncAll();
+    } catch(e){ toast('Server: ' + e.message); }
+  }
+  render();
+  toast('Broker account removed permanently');
+}
+async function deleteSelectedAccounts(){
+  const ids = Array.from(SELECTED_ACCOUNT_IDS);
+  if(!ids.length) return;
+  if(!confirm(`Permanently delete ${ids.length} selected broker account(s)?`)) return;
+  S.accounts = S.accounts.filter(x => !ids.includes(x.id));
+  S.traders = S.traders.filter(x => !ids.includes(x.id));
+  S.trades = S.trades.filter(x => !ids.includes(x.account));
+  SELECTED_ACCOUNT_IDS.clear();
+  save();
+  if(LIVE){
+    try {
+      await API.deleteAccountsBulk(ids);
+      await API.syncAll();
+    } catch(e){ toast('Server: ' + e.message); }
+  }
+  render();
+  toast(`${ids.length} broker account(s) removed permanently`);
+}
+
 function editTrader(id){
   const t=id?trader(id):{id:'TR-'+String(S.traders.length+1).padStart(3,'0'),name:'',ra:'',style:'Manual',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:TODAY};
   const o=(k,arr)=>`<select id="e_${k}">${arr.map(x=>`<option ${t[k]===x?'selected':''}>${x}</option>`).join('')}</select>`;
@@ -1282,7 +1430,7 @@ function editTrader(id){
    <label class="f">Trader ID<input id="e_id" value="${esc(t.id)}" ${id?'disabled':''}></label><label class="f">Name<input id="e_name" value="${esc(t.name)}"></label><label class="f">RA / dealer<input id="e_ra" value="${esc(t.ra)}"></label>
    <label class="f">Trading style${o('style',['Manual','Algo'])}</label><label class="f">Holding style${o('holding',['Intraday','Carry forward'])}</label><label class="f">Segment<input id="e_segment" value="${esc(t.segment)}"></label>
    <label class="f">Test capital (₹)<input id="e_testCapital" type="number" value="${t.testCapital}"></label><label class="f">Status${o('status',['Testing','Live','Watch','Stopped'])}</label><label class="f">Test start date<input id="e_start" type="date" value="${t.start}"></label></div>
-   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveTrader(${id?`'${id}'`:'null'})">Save</button></div>`);
+   <div class="row" style="margin-top:16px;justify-content:flex-end">${id?`<button class="btn danger" style="margin-right:auto" onclick="delTrader('${id}')">Delete trader</button>`:''}<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveTrader(${id?`'${id}'`:'null'})">Save</button></div>`);
 }
 function saveTrader(id){
   const t={ id: id||val('e_id').trim(), name:val('e_name').trim()||'Unnamed', ra:val('e_ra'), style:val('e_style'), holding:val('e_holding'), segment:val('e_segment'), testCapital:+val('e_testCapital')||0, status:val('e_status'), start:val('e_start')||TODAY };
@@ -1327,6 +1475,7 @@ function editAccount(id){
   </div>
   ${statusHtml}
   <div class="row" style="margin-top:16px;justify-content:flex-end">
+    ${id?`<button class="btn danger" style="margin-right:auto" onclick="delAccount('${id}')">Delete account</button>`:''}
     <button class="btn" onclick="closeModal()">Cancel</button>
     <button class="btn pri" onclick="saveAccount(${id?`'${id}'`:'null'})">Save</button>
   </div>`);
