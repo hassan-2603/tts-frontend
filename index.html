@@ -264,22 +264,9 @@ function getDeletedIds(){
   } catch(e){}
   return { traders: new Set(), accounts: new Set() };
 }
-function markDeletedIds(trIds=[], accIds=[]){
-  const d = getDeletedIds();
-  trIds.forEach(x => d.traders.add(x));
-  accIds.forEach(x => d.accounts.add(x));
-  try {
-    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify({ traders: [...d.traders], accounts: [...d.accounts] }));
-  } catch(e){}
-}
-function unmarkDeletedId(trId=null, accId=null){
-  const d = getDeletedIds();
-  if(trId) d.traders.delete(trId);
-  if(accId) d.accounts.delete(accId);
-  try {
-    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify({ traders: [...d.traders], accounts: [...d.accounts] }));
-  } catch(e){}
-}
+function markDeletedIds(trIds=[], accIds=[]){}
+function unmarkDeletedId(trId=null, accId=null){}
+try { localStorage.removeItem(DELETED_IDS_KEY); } catch(e){}
 function load(){
   try{ const raw=localStorage.getItem(KEY); if(raw){ S=JSON.parse(raw); S.settings={...DEFAULT_SETTINGS,...S.settings}; } }catch(e){}
   if(!S) S=buildDemo();
@@ -324,7 +311,7 @@ function canEdit(){ return ROLE==='admin'; }
 let DAILY_REPORTS = [], VIOLATIONS = [];
 const API = {
   async req(path, opt={}){
-    const r = await fetch('/api'+path, {...opt, headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(opt.headers||{})}});
+    const r = await fetch('/api'+path, {cache:'no-store', ...opt, headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(opt.headers||{})}});
     if(r.status===401 && path!=='/login'){ logout(); throw new Error('Signed out — please sign in again'); }
     if(!r.ok){ let m=r.status+''; try{ m=(await r.json()).detail||m; }catch(e){} throw new Error(m); }
     return r.json();
@@ -342,9 +329,8 @@ const API = {
         this.req('/settings'), this.req('/rulelog'), this.req('/status'),
         this.req('/daily-reports').catch(()=>[]), this.req('/violations').catch(()=>[])]);
     }
-    const delIds = getDeletedIds();
-    traders = (traders || []).filter(t => !delIds.traders.has(t.id));
-    accounts = (accounts || []).filter(a => !delIds.accounts.has(a.id));
+    traders = traders || [];
+    accounts = accounts || [];
     Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status||{};
     DAILY_REPORTS = Array.isArray(dailyReports) ? dailyReports : [];
     VIOLATIONS = Array.isArray(violations) ? violations : [];
@@ -2265,7 +2251,9 @@ function initDashboardWebSocket(){
     WS_CLIENT.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if(msg.type === 'trades_updated'){
+        if(msg.type === 'state_updated'){
+          refreshLive();
+        } else if(msg.type === 'trades_updated'){
           const now = Date.now();
           if(now - _lastWsMsg > 20000){
             _lastWsMsg = now;
