@@ -631,7 +631,7 @@ const NAV = [
   ['sec','Compare & decide'],['report','Trader report','📈'],['compare','Compare traders','⇅'],['scorecard','30-day scorecard','✓'],['groups','Account groups','▤'],
   ['sec','System'],['settings','Settings & API','⚙']
 ];
-let VIEW='overview', SEL={trader:'TR-001', range:'today', from:addDays(TODAY,-30), to:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
+let VIEW='overview', SEL={trader:'TR-001', range:'today', from:addDays(TODAY,-30), to:TODAY, ovRange:'week', ovFrom:addDays(TODAY,-7), ovTo:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
 let charts=[];
 function shell(inner){
   const nf = chk().flags.filter(f=>f.trade.date===TODAY).length;
@@ -678,19 +678,53 @@ function kpi(l,v,h='',c=''){
 
 // ---------- views ----------
 const V = {};
+function addMonthsStr(s, m){
+  const d = new Date(s + 'T00:00:00Z');
+  d.setUTCMonth(d.getUTCMonth() + m);
+  return dstr(d);
+}
 V.overview = () => {
-  const {flags}=chk(), today=flags.filter(f=>f.trade.date===TODAY);
-  const tToday=S.trades.filter(t=>t.date===TODAY);
-  const flaggedTr=new Set(today.map(f=>f.trade.trader));
-  const all=metrics(S.trades);
-  const pnlToday=tToday.reduce((a,t)=>a+tradePnl(t),0);
-  const cnt=s=>S.traders.filter(t=>t.status===s).length;
-  return header('Overview', 'Today · '+fmtDate(TODAY)+' 2026 · all traders', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
-  `<div class="grid k6">
-    ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
-    ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
-    ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
-    ${kpi('P&L today', inrS(pnlToday), tToday.length+' trades', cls(pnlToday))}
+  const R = SEL.ovRange || 'week';
+  let from = '', to = TODAY, rangeLabel = '';
+  if(R === 'today'){
+    from = TODAY; to = TODAY; rangeLabel = 'Today · ' + fmtDate(TODAY);
+  } else if(R === 'week'){
+    from = addDays(TODAY, -7); to = TODAY; rangeLabel = 'Last week (' + fmtDate(from) + ' → ' + fmtDate(to) + ')';
+  } else if(R === 'month'){
+    from = addMonthsStr(TODAY, -1); to = TODAY; rangeLabel = 'Last month (' + fmtDate(from) + ' → ' + fmtDate(to) + ')';
+  } else if(R === 'custom'){
+    from = SEL.ovFrom || addDays(TODAY, -7); to = SEL.ovTo || TODAY; rangeLabel = 'Custom (' + fmtDate(from) + ' → ' + fmtDate(to) + ')';
+  } else {
+    from = ''; to = ''; rangeLabel = 'All time';
+  }
+
+  const inRange = (d, isOpen=false) => {
+    if(!from && !to) return true;
+    if(isOpen && (!to || to >= TODAY)) return true;
+    return (!from || d >= from) && (!to || d <= to);
+  };
+
+  const {flags} = chk();
+  const filtFlags = flags.filter(f => inRange(f.trade.exitDate || f.trade.date, f.trade.open));
+  const filtTrades = S.trades.filter(t => inRange(t.exitDate || t.date, t.open));
+  const flaggedTr = new Set(filtFlags.map(f => f.trade.trader));
+  const filtM = metrics(filtTrades);
+  const all = metrics(S.trades);
+  const pnlPeriod = filtTrades.reduce((a, t) => a + tradePnl(t), 0);
+  const cnt = s => S.traders.filter(t => t.status === s).length;
+  const periodTitle = R === 'today' ? 'today' : R === 'week' ? 'last week' : R === 'month' ? 'last month' : R === 'custom' ? 'custom' : 'all time';
+
+  return header('Overview', rangeLabel + ' · all traders', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
+  `<div class="card" style="margin-bottom:14px"><div class="row">
+    <div class="tabs">${[['today','Today'],['week','Last week'],['month','Last month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${R===k?'on':''}" onclick="SEL.ovRange='${k}';render()">${l}</button>`).join('')}</div>
+    ${R==='custom'?`<input type="date" id="ovFrom" value="${SEL.ovFrom}"><input type="date" id="ovTo" value="${SEL.ovTo}"><button class="btn sm" onclick="SEL.ovFrom=$('#ovFrom').value;SEL.ovTo=$('#ovTo').value;render()">Go</button>`:''}
+    <div style="flex:1"></div><span class="muted" style="font-size:12px">${rangeLabel}</span>
+  </div></div>
+  <div class="grid k6">
+    ${kpi('Red flags ('+periodTitle+')', filtFlags.length, filtFlags.filter(f=>f.level==='High').length+' high', filtFlags.length?'neg':'')}
+    ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, periodTitle)}
+    ${kpi('Rule-follow ('+periodTitle+')', pct(filtM.ruleFollow), filtM.n+' trades checked', filtM.ruleFollow>=95?'pos':'amb')}
+    ${kpi('P&L ('+periodTitle+')', inrS(pnlPeriod), filtTrades.length+' trades', cls(pnlPeriod))}
     ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
     ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
   </div>
@@ -698,7 +732,7 @@ V.overview = () => {
     <div class="flow">${[['Add trader','Profile, accounts, style','traders'],['Write rules','His system saved as rules','rules'],['30-day test','Small capital, we record all','trades'],['Report card','Numbers + red flags','scorecard'],['Big capital','Only if passed — keep tracking','compare']]
       .map((s,i)=>`<div class="st" style="cursor:pointer" onclick="go('${s[2]}')"><span class="no">${i+1}</span> <b>${s[0]}</b><span>${s[1]}</span></div>`).join('')}</div></div>
   <div class="grid c21" style="margin-top:14px">
-    <div class="card"><h3>Latest red flags <small>most recent first</small></h3>${flagTable(flags.slice(0,7))}</div>
+    <div class="card"><h3>Latest red flags <small>${periodTitle} · most recent first</small></h3>${flagTable(filtFlags.slice(0,7))}</div>
     <div class="card"><h3>30-day test progress</h3>
       ${S.traders.map(t=>{ const sc=scorecard(t); return `<div style="margin-bottom:12px;cursor:pointer" onclick="openReport('${t.id}')">
         <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span>${statusPill(t.status)} ${t.status==='Testing'||t.status==='Watch'?resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total):''}</span></div>
@@ -846,11 +880,11 @@ V.trades = () => {
     <div style="flex:1"></div><span class="muted">${list.length} closed trades · Net <b class="${cls(tot)}">${inrS(tot)}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
   <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr>
     ${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTrades" onchange="toggleSelectAllTrades(this.checked)" title="Select all shown"></th>`:''}
-    <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Charges</th><th class="n">Realized P&L</th><th>Check</th>
+    <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points</th><th class="n">Realized P&L</th><th>Check</th>
     ${canEdit()?`<th></th>`:''}
   </tr>
   ${shown.map(t=>{
-    const f=byTrade[t.id]||[], rp=tradePnl(t), np=netTradePnl(t), isSel=SELECTED_TRADE_IDS.has(t.id);
+    const f=byTrade[t.id]||[], rp=tradePnl(t), np=netTradePnl(t), pts=Number(t.exit||0)-Number(t.entry||0), isSel=SELECTED_TRADE_IDS.has(t.id);
     return `<tr class="click" onclick="openTrade('${t.id}')">
     ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" class="trade-chk" value="${t.id}" ${isSel?'checked':''} onchange="onTradeChkChange(this)"></td>`:''}
     <td class="mono">${fmtDate(t.date)} ${esc(t.time||'')}</td>
@@ -862,7 +896,7 @@ V.trades = () => {
     <td class="n">${t.lots}</td>
     <td class="n">${Number(t.entry||0).toFixed(2)}</td>
     <td class="n">${Number(t.exit||0).toFixed(2)}</td>
-    <td class="n">${inr(t.charges||0)}</td>
+    <td class="n ${cls(pts)}">${pts>0?'+':''}${pts.toFixed(2)}</td>
     <td class="n ${cls(rp)}">${inr(rp)}</td>
     <td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td>
     ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:right"><button class="btn sm danger" style="padding:2px 7px;font-size:11px;line-height:1" onclick="delTrade('${t.id}')" title="Delete this trade">✕</button></td>`:''}
@@ -1213,7 +1247,7 @@ V.groups = () => {
       <div style="flex:1"><div class="bar" style="height:14px"><i style="width:${Math.abs(r.pnl)/mx*100}%;background:${r.pnl>=0?'var(--green)':'var(--red)'}"></i></div></div>
       <div class="mono ${cls(r.pnl)}" style="width:130px;text-align:right">${inrS(r.pnl)}${r.pnl<0?' <span class="muted">(loss)</span>':''}</div></div>`).join('')}
     <div class="row" style="border-top:1px solid var(--line);padding-top:12px;margin-top:8px"><b style="width:170px">Group total</b><div style="flex:1"></div><b class="mono ${cls(tot)}" style="font-size:18px">${inrS(tot)}</b></div></div>
-    <div class="card"><h3>Accounts in this group</h3><table><tr><th>Account</th><th>Broker</th><th class="n">Trades</th><th class="n">Charges</th></tr>${rows.map(r=>`<tr><td>${esc(r.a?.name)} · ${esc(trader(r.a?.trader)?.name||'')}</td><td>${esc(r.a?.broker)}</td><td class="n">${r.n}</td><td class="n">${inr(r.ch)}</td></tr>`).join('')}</table></div></div>`:'<div class="card">No groups yet.</div>'}`;
+    <div class="card"><h3>Accounts in this group</h3><table><tr><th>Account</th><th>Broker</th><th class="n">Trades</th></tr>${rows.map(r=>`<tr><td>${esc(r.a?.name)} · ${esc(trader(r.a?.trader)?.name||'')}</td><td>${esc(r.a?.broker)}</td><td class="n">${r.n}</td></tr>`).join('')}</table></div></div>`:'<div class="card">No groups yet.</div>'}`;
 };
 
 V.settings = () => {
