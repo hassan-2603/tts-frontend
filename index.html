@@ -243,6 +243,7 @@ function nextTradingDay(d,days){ const i=days.indexOf(d); return days[i+1]||addD
 
 // ---------- store ----------
 const KEY='tts_state_v1';
+const LIVE_CACHE_KEY='tts_live_cache_v1';
 let S, ROLE='admin', USER='admin', LIVE=false, TOKEN=null, STATUS={}, USERS=[];
 function load(){
   try{ const raw=localStorage.getItem(KEY); if(raw){ S=JSON.parse(raw); S.settings={...DEFAULT_SETTINGS,...S.settings}; } }catch(e){}
@@ -251,7 +252,37 @@ function load(){
     SEL.trader = S.traders[0].id;
   }
 }
-function save(){ if(!LIVE){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} } invalidate(); }
+function saveLiveCache(){
+  if(!LIVE || !S) return;
+  try {
+    localStorage.setItem(LIVE_CACHE_KEY, JSON.stringify({
+      S,
+      STATUS,
+      DAILY_REPORTS,
+      VIOLATIONS,
+      trader: SEL.trader,
+      ts: Date.now()
+    }));
+  } catch(e){}
+}
+function loadLiveCache(){
+  try {
+    const raw = localStorage.getItem(LIVE_CACHE_KEY);
+    if(!raw) return false;
+    const cached = JSON.parse(raw);
+    if(cached && cached.S && Array.isArray(cached.S.traders)){
+      S = {...cached.S, settings:{...DEFAULT_SETTINGS, ...(cached.S.settings||{}), dataSource:'live'}};
+      STATUS = cached.STATUS || {};
+      DAILY_REPORTS = Array.isArray(cached.DAILY_REPORTS) ? cached.DAILY_REPORTS : [];
+      VIOLATIONS = Array.isArray(cached.VIOLATIONS) ? cached.VIOLATIONS : [];
+      if(cached.trader) SEL.trader = cached.trader;
+      invalidate();
+      return true;
+    }
+  } catch(e){}
+  return false;
+}
+function save(){ if(!LIVE){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} } else { saveLiveCache(); } invalidate(); }
 function canEdit(){ return ROLE==='admin'; }
 
 // ---------- API adapter (live deployment) ----------
@@ -264,18 +295,27 @@ const API = {
     return r.json();
   },
   async syncAll(){
-    const [traders,accounts,rules,trades,groups,settings,ruleLog,status,dailyReports,violations] = await Promise.all([
-      this.req('/traders'), this.req('/accounts'), this.req('/rules'), this.req('/trades?from='+addDays(TODAY,-180)), this.req('/groups'),
-      this.req('/settings'), this.req('/rulelog'), this.req('/status'),
-      this.req('/daily-reports').catch(()=>[]), this.req('/violations').catch(()=>[])]);
-    Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status;
+    let traders, accounts, rules, trades, groups, settings, ruleLog, status, dailyReports, violations;
+    try {
+      const b = await this.req('/bootstrap?from='+addDays(TODAY,-180));
+      traders = b.traders; accounts = b.accounts; rules = b.rules; trades = b.trades;
+      groups = b.groups; settings = b.settings; ruleLog = b.ruleLog; status = b.status;
+      dailyReports = b.dailyReports; violations = b.violations;
+    } catch(_bootErr) {
+      [traders,accounts,rules,trades,groups,settings,ruleLog,status,dailyReports,violations] = await Promise.all([
+        this.req('/traders'), this.req('/accounts'), this.req('/rules'), this.req('/trades?from='+addDays(TODAY,-180)), this.req('/groups'),
+        this.req('/settings'), this.req('/rulelog'), this.req('/status'),
+        this.req('/daily-reports').catch(()=>[]), this.req('/violations').catch(()=>[])]);
+    }
+    Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status||{};
     DAILY_REPORTS = Array.isArray(dailyReports) ? dailyReports : [];
     VIOLATIONS = Array.isArray(violations) ? violations : [];
-    if(ROLE==='admin'){ try{ USERS=await this.req('/users'); }catch(e){} }
+    if(ROLE==='admin' && (!USERS || !USERS.length)){ this.req('/users').then(u=>{ USERS=u; }).catch(()=>{}); }
     const validIds = new Set([...(traders||[]).map(t=>t.id), ...(accounts||[]).map(a=>a.id), ...(accounts||[]).map(a=>a.zebu_uid).filter(Boolean)]);
     if(validIds.size && !validIds.has(SEL.trader)){
       SEL.trader = (traders && traders[0]?.id) || (accounts && accounts[0]?.id);
     }
+    saveLiveCache();
     invalidate();
   },
   saveTrader:t=>API.req('/traders/'+encodeURIComponent(t.id),{method:'PUT',body:JSON.stringify(t)}),
@@ -1412,21 +1452,23 @@ function linkZebu(id){
   openLinkModal(id);
 }
 let _isRefreshingLive = false;
+let _lastBgBrokerTrigger = 0;
 async function refreshLive(){ 
   if(!LIVE || _isRefreshingLive) return; 
   _isRefreshingLive = true;
   try { 
-    if(VIEW === 'report' || VIEW === 'overview' || VIEW === 'trades'){
+    await API.syncAll(); 
+    render();
+    // Trigger background broker poll non-blockingly at most once every 30s
+    const nowMs = Date.now();
+    if(nowMs - _lastBgBrokerTrigger > 30000 && (VIEW === 'report' || VIEW === 'overview' || VIEW === 'trades')){
+      _lastBgBrokerTrigger = nowMs;
       const targetId = SEL.trader;
       const acc = account(targetId) || S.accounts.find(a => a.zebu_uid === targetId || a.trader === targetId);
       if(acc && acc.link === 'Linked'){
-        await API.syncAccount(acc.id).catch(()=>{});
-      } else {
-        await API.req('/sync', {method:'POST'}).catch(()=>{});
+        API.syncAccount(acc.id).then(()=>API.syncAll()).then(()=>render()).catch(()=>{});
       }
     }
-    await API.syncAll(); 
-    render(); 
   } catch(e){} finally {
     _isRefreshingLive = false;
   }
@@ -1718,6 +1760,7 @@ function logout(){
   try{
     localStorage.removeItem('tts_user');
     localStorage.removeItem('tts_live');
+    localStorage.removeItem(LIVE_CACHE_KEY);
     sessionStorage.removeItem('tts_user');
     sessionStorage.removeItem('tts_live');
   }catch(e){}
@@ -1816,12 +1859,35 @@ try {
 } catch(e) {}
 
 (async function init(){
-  $('#root').innerHTML='<div class="login"><div class="muted">Loading…</div></div>';
+  // Fast synchronous check for cached live session to eliminate the "Loading…" screen on page refresh
+  let savedLiveAuth = null;
+  try {
+    savedLiveAuth = JSON.parse(localStorage.getItem('tts_live')||sessionStorage.getItem('tts_live')||'null');
+  } catch(e){}
+
+  const likelyLive = location.host.includes('vercel.app') || location.host.includes('onrender.com') || Boolean(savedLiveAuth);
+  if(likelyLive && savedLiveAuth && savedLiveAuth.TOKEN){
+    LIVE = true;
+    TOKEN = savedLiveAuth.TOKEN;
+    USER = savedLiveAuth.USER;
+    ROLE = savedLiveAuth.ROLE;
+    if(loadLiveCache()){
+      // Instant (<10ms) render from cached snapshot — zero "Loading…" screen!
+      render();
+    } else {
+      $('#root').innerHTML='<div class="login"><div class="muted">Loading…</div></div>';
+    }
+  } else {
+    $('#root').innerHTML='<div class="login"><div class="muted">Loading…</div></div>';
+  }
+
   LIVE = await detectLive();
   if(LIVE){
-    S={settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),traders:[],accounts:[],rules:{},ruleLog:[],trades:[],groups:[]}; USER=null;
+    if(!S || !Array.isArray(S.traders)){
+      S={settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),traders:[],accounts:[],rules:{},ruleLog:[],trades:[],groups:[]};
+    }
     try{
-      const u=JSON.parse(localStorage.getItem('tts_live')||sessionStorage.getItem('tts_live')||'null');
+      const u = savedLiveAuth || JSON.parse(localStorage.getItem('tts_live')||sessionStorage.getItem('tts_live')||'null');
       if(u){
         TOKEN=u.TOKEN; USER=u.USER; ROLE=u.ROLE;
         try {
@@ -1830,6 +1896,8 @@ try {
           console.warn('Initial sync warning:', syncErr);
         }
         initDashboardWebSocket();
+      } else {
+        USER=null;
       }
     }catch(e){ console.error('Auth parse error:', e); }
     setInterval(()=>{ if(USER && !$('#mbg').classList.contains('on') && document.visibilityState!=='hidden' && !document.activeElement?.matches?.('input,select,textarea')) refreshLive(); }, 15000);
