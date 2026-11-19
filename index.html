@@ -1316,7 +1316,13 @@ function editAccount(id){
     <label class="f">Trader${traderSelect('a_trader',a.trader)}</label>
     <label class="f">Zebu Client ID (uid)<input id="a_zuid" value="${esc(a.zebu_uid||'')}" placeholder="e.g. 47000S19 or Z58805"></label>
     <label class="f">Zebu API Secret Key<input id="a_zsecret" type="password" value="${esc(a.zebu_secret_key||'')}" placeholder="API Secret from Zebu settings (optional)"></label>
-    <label class="f">Static Proxy URL (optional)<input id="a_proxy" value="${esc(a.proxy_url||'')}" placeholder="e.g. http://user:pass@79.127.168.43:port"></label>
+    <label class="f">Static Proxy URL (optional)
+      <div style="display:flex;gap:6px">
+        <input id="a_proxy" value="${esc(a.proxy_url||'')}" placeholder="e.g. http://user:pass@79.127.168.43:port" style="flex:1">
+        <button class="btn sm" type="button" id="btnCheckProxyIp" onclick="checkOutboundIp()">🔍 Check IP</button>
+      </div>
+      <div id="proxy_ip_result" style="font-size:11.5px;margin-top:4px;color:#94a3b8"></div>
+    </label>
     <label class="f">Zebu Account ID (actid)<input id="a_zact" value="${esc(a.zebu_actid||'')}" placeholder="usually same as uid"></label>
   </div>
   ${statusHtml}
@@ -1324,6 +1330,30 @@ function editAccount(id){
     <button class="btn" onclick="closeModal()">Cancel</button>
     <button class="btn pri" onclick="saveAccount(${id?`'${id}'`:'null'})">Save</button>
   </div>`);
+}
+async function checkOutboundIp(){
+  const p = (val('a_proxy') || '').trim();
+  const btn = document.getElementById('btnCheckProxyIp');
+  const box = document.getElementById('proxy_ip_result');
+  if(btn){ btn.disabled = true; btn.textContent = 'Checking…'; }
+  if(box){ box.innerHTML = 'Checking outbound IP reaching Zebu…'; }
+  try {
+    const r = await API.req('/test-proxy?proxy=' + encodeURIComponent(p));
+    const hc = r.http_client || {};
+    if(hc.ok && hc.ip){
+      if(box){
+        box.innerHTML = `✅ Outbound IP reaching Zebu: <code style="background:#0f172a;color:#38bdf8;padding:2px 6px;border-radius:4px;font-weight:700">${esc(hc.ip)}</code> — Put this exact IP in Zebu's Static IP whitelist.`;
+      }
+    } else {
+      if(box){
+        box.innerHTML = `<span style="color:#ef4444">❌ Proxy error: ${esc(hc.error || 'Could not connect')}</span>`;
+      }
+    }
+  } catch(e){
+    if(box){ box.innerHTML = `<span style="color:#ef4444">❌ ${esc(e.message)}</span>`; }
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = '🔍 Check IP'; }
+  }
 }
 function saveAccount(id){
   const a = {
