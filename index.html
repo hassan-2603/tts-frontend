@@ -631,7 +631,7 @@ const NAV = [
   ['sec','Compare & decide'],['report','Trader report','📈'],['compare','Compare traders','⇅'],['scorecard','30-day scorecard','✓'],['groups','Account groups','▤'],
   ['sec','System'],['settings','Settings & API','⚙']
 ];
-let VIEW='overview', SEL={trader:'TR-001', range:'today', from:addDays(TODAY,-30), to:TODAY, ovRange:'week', ovFrom:addDays(TODAY,-7), ovTo:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
+let VIEW='overview', SEL={trader:'TR-001', range:'today', from:addDays(TODAY,-30), to:TODAY, ovRange:'week', ovFrom:addDays(TODAY,-7), ovTo:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, tradeSort:{col:null,dir:'asc'}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
 let charts=[];
 function shell(inner){
   const nf = chk().flags.filter(f=>f.trade.date===TODAY).length;
@@ -861,6 +861,32 @@ function ruleSummary(r){ return [
   `Stop-loss: max <b>${+r.slPerLot>0?inr(+r.slPerLot):'Off'}</b> per lot · daily loss <b>${+r.dailyLoss>0?inr(+r.dailyLoss):'Off'}</b> → stop for the day`,
   `Placed by: <b>${!r.source||r.source==='ANY'?'manual or algo':r.source}</b>${String(r.hedge)==='true'?' · <b>hedge required</b>':''}` ]; }
 
+function toggleTradeSort(col){
+  const cur = SEL.tradeSort || {col:null, dir:'asc'};
+  SEL.tradeSort = { col, dir: cur.dir === 'desc' ? 'asc' : 'desc' };
+  render();
+}
+function tradeExpiryLabel(t){
+  if(t.expiry){
+    return fmtDate(t.expiry);
+  }
+  const s = String(t.tsym || '').toUpperCase();
+  if(s){
+    // Noren format: BANKNIFTY26NOV26C51700 (DDMMMYY)
+    const m1 = s.match(/(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{2})/);
+    if(m1){
+      const mon = m1[2][0] + m1[2].slice(1).toLowerCase();
+      return `${m1[1]} ${mon} 20${m1[3]}`;
+    }
+    // NSE monthly format: BANKNIFTY26NOV51700CE (YYMMM)
+    const m2 = s.match(/(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)/);
+    if(m2){
+      const mon = m2[2][0] + m2[2].slice(1).toLowerCase();
+      return `${mon} 20${m2[1]}`;
+    }
+  }
+  return t.expiryType || '';
+}
 V.trades = () => {
   const F=SEL.tradeFilter, {byTrade}=chk();
   let list=S.trades.filter(t=>{
@@ -869,7 +895,16 @@ V.trades = () => {
     return (!F.trader||belongsToSelection(t,F.trader))&&(!F.from||dKey>=F.from)&&(!F.to||dKey<=F.to);
   });
   if(F.flag==='flag') list=list.filter(t=>byTrade[t.id]?.length); if(F.flag==='ok') list=list.filter(t=>!byTrade[t.id]?.length);
-  list.sort((a,b)=>((b.exitDate||b.date)+(b.exitTime||b.time||'')).localeCompare((a.exitDate||a.date)+(a.exitTime||a.time||'')));
+  const TS = SEL.tradeSort || {col:null, dir:'asc'};
+  if(TS.col){
+    const getVal = t => TS.col==='netPnl' ? netTradePnl(t) : TS.col==='points' ? (Number(t.exit||0)-Number(t.entry||0)) : tradePnl(t);
+    list.sort((a,b) => TS.dir==='desc' ? (getVal(b)-getVal(a)) : (getVal(a)-getVal(b)));
+  } else {
+    list.sort((a,b)=>((b.exitDate||b.date)+(b.exitTime||b.time||'')).localeCompare((a.exitDate||a.date)+(a.exitTime||a.time||'')));
+  }
+  const arrowChar = TS.dir === 'desc' ? '▼' : '▲';
+  const arrowTitle = TS.dir === 'desc' ? 'Click to sort increasing (low to high)' : 'Click to sort decreasing (high to low)';
+  const sortBtn = col => ` <button type="button" class="btn sm" style="padding:1px 5px;font-size:10px;line-height:1.1;margin-left:3px;vertical-align:middle" onclick="toggleTradeSort('${col}')" title="${arrowTitle}">${arrowChar}</button>`;
   const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+netTradePnl(t),0);
   const selCount = SELECTED_TRADE_IDS.size;
   return header('Trade log','Closed trades — exact broker execution records', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
@@ -880,18 +915,18 @@ V.trades = () => {
     <div style="flex:1"></div><span class="muted">${list.length} closed trades · Net <b class="${cls(tot)}">${inrS(tot)}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
   <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr>
     ${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTrades" onchange="toggleSelectAllTrades(this.checked)" title="Select all shown"></th>`:''}
-    <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points</th><th class="n">Realized P&L</th><th>Check</th>
+    <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L${sortBtn('netPnl')}</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points${sortBtn('points')}</th><th class="n">Realized P&L${sortBtn('realizedPnl')}</th><th>Check</th>
     ${canEdit()?`<th></th>`:''}
   </tr>
   ${shown.map(t=>{
-    const f=byTrade[t.id]||[], rp=tradePnl(t), np=netTradePnl(t), pts=Number(t.exit||0)-Number(t.entry||0), isSel=SELECTED_TRADE_IDS.has(t.id);
+    const f=byTrade[t.id]||[], rp=tradePnl(t), np=netTradePnl(t), pts=Number(t.exit||0)-Number(t.entry||0), expLbl=tradeExpiryLabel(t), isSel=SELECTED_TRADE_IDS.has(t.id);
     return `<tr class="click" onclick="openTrade('${t.id}')">
     ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" class="trade-chk" value="${t.id}" ${isSel?'checked':''} onchange="onTradeChkChange(this)"></td>`:''}
     <td class="mono">${fmtDate(t.date)} ${esc(t.time||'')}</td>
     <td class="mono">${fmtDate(t.exitDate||t.date)} ${esc(t.exitTime||'')}</td>
     <td>${esc(account(t.account)?.name||t.account)}</td>
     <td class="n ${cls(np)}">${inr(np)}</td>
-    <td>${esc(t.symbol)} ${t.strike||''} ${esc(t.opt||'')}</td>
+    <td>${esc(t.symbol)} ${t.strike||''} ${esc(t.opt||'')}${expLbl?` <span class="muted mono" style="font-size:11px">(${esc(expLbl)})</span>`:''}</td>
     <td>${esc(t.side)}</td>
     <td class="n">${t.lots}</td>
     <td class="n">${Number(t.entry||0).toFixed(2)}</td>
