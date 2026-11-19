@@ -354,7 +354,7 @@ const API = {
   deleteTrade:id=>API.req('/trades/'+encodeURIComponent(id),{method:'DELETE'}),
   deleteTradesBulk:ids=>API.req('/trades/delete-bulk',{method:'POST',body:JSON.stringify({ids})}),
   unlinkAccount:id=>API.req('/accounts/'+encodeURIComponent(id)+'/unlink',{method:'POST'}),
-  syncAccount:aid=>API.req('/sync?account='+encodeURIComponent(aid),{method:'POST'}),
+  syncAccount:(aid, force=false)=>API.req('/sync?account='+encodeURIComponent(aid)+(force?'&force=1':''),{method:'POST'}),
   accountPnl:aid=>API.req('/account-pnl/'+encodeURIComponent(aid)),
   linkAccount:(id)=>API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST',body:JSON.stringify({frontend_url:window.location.origin})}),
   saveAccountToken:(id,token)=>API.req('/accounts/'+encodeURIComponent(id)+'/token',{method:'POST',body:JSON.stringify({token})}),
@@ -1035,7 +1035,7 @@ V.report = () => {
         📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>Realised P&L: <span class="${cls(dispRealised)}">${inr(dispRealised)}</span></b> · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
         ${staleWarning}
       </div>
-      <button class="btn sm pri" onclick="onTraderChange('${t.id}')">🔄 Fetch Live Zebu</button>
+      <button class="btn sm pri" onclick="onTraderChange('${t.id}', true)">🔄 Fetch Live Zebu</button>
     </div>
   ` : '';
 
@@ -2198,7 +2198,7 @@ function delGroup(id){ S.groups=S.groups.filter(g=>g.id!==id); SEL.group=S.group
 function saveSettings(){ const s=S.settings; const n=k=>{ const v=val('s_'+k); if(v!==undefined) s[k]=+v; }; n('lotSize'); n('strikeStep');
   ['telegram','whatsapp','email','summaryTime'].forEach(k=>s.alerts[k]=val('a_'+k)); s.alerts.onHigh=val('a_onHigh')==='true'; s.alerts.dailySummary=val('a_dailySummary')==='true';
   save(); liveCall(()=>API.req('/settings',{method:'PUT',body:JSON.stringify(s)})); render(); toast('Settings saved'); }
-async function syncNow(btn){ if(btn){ btn.disabled=true; btn.textContent='Syncing…'; } try{ await API.req('/sync',{method:'POST'}); await API.syncAll(); toast('Synced from Zebu'); }catch(e){ toast('Sync failed: '+e.message); } render(); }
+async function syncNow(btn){ if(btn){ btn.disabled=true; btn.textContent='Syncing…'; } try{ await API.req('/sync?force=1',{method:'POST'}); await API.syncAll(); toast('Synced from Zebu'); }catch(e){ toast('Sync failed: '+e.message); } render(); }
 async function testAlert(){ try{ const r=await API.req('/alerts/test',{method:'POST'}); toast(r.sent.length?'Sent via '+r.sent.join(', '):'Nothing sent — set alert contacts and server .env'); }catch(e){ toast(e.message); } }
 async function saveUser(){ const u=val('u_name').trim(); if(!u) return; try{ await API.req('/users/'+encodeURIComponent(u),{method:'PUT',body:JSON.stringify({password:val('u_pw'),role:val('u_role')})}); await API.syncAll(); render(); toast('User saved'); }catch(e){ toast(e.message); } }
 function resetDemo(){ if(LIVE) return; modal(`<h2>Reset demo data?</h2><p>All changes in this browser will be replaced with fresh sample data.</p><div class="row" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn danger" onclick="S=buildDemo();save();closeModal();render();toast('Demo data reset')">Reset</button></div>`); }
@@ -2268,7 +2268,7 @@ function render(){
   $('#root').innerHTML = shell(V[VIEW]());
   bind();
 }
-async function onTraderChange(targetId){
+async function onTraderChange(targetId, forceFetch=false){
   SEL.trader = targetId;
   render();
   if(LIVE){
@@ -2278,7 +2278,7 @@ async function onTraderChange(targetId){
       const aid = acc ? acc.id : targetId;
       toast('Fetching live details for ' + (t?.name || targetId) + ' from Zebu...');
       await Promise.allSettled([
-        API.syncAccount(aid),
+        API.syncAccount(aid, forceFetch),
         API.accountPnl(aid)
       ]);
       await API.syncAll();
