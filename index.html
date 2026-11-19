@@ -10,15 +10,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
-  --bg:#ffffff; --panel:#ffffff; --panel2:#f8f8f8; --line:#111111; --text:#111111; --muted:#333333;
+  --bg:#f4f8fc; --panel:#ffffff; --panel2:#f4f8fc; --line:#111111; --text:#111111; --muted:#333333;
   --accent:#111111; --green:#15803d; --red:#dc2626; --amber:#b45309; --violet:#111111;
   --radius:10px; --mono:'JetBrains Mono',ui-monospace,monospace;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:#ffffff;color:#111111;font:14px/1.45 Inter,system-ui,sans-serif}
+html,body{margin:0;background:#f4f8fc;color:#111111;font:14px/1.45 Inter,system-ui,sans-serif}
 a{color:#111111}
-.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;background:#ffffff}
-aside{background:#ffffff;border-right:1.5px solid #111111;padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;background:#f4f8fc}
+aside{background:#f8fbff;border-right:1.5px solid #111111;padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
 .brand{display:flex;gap:10px;align-items:center;padding:4px 8px 18px}
 .logo{width:34px;height:34px;border-radius:8px;background:#111111;border:1.5px solid #111111;display:grid;place-items:center;font-weight:700;color:#ffffff}
 .brand b{display:block;font-size:14px;color:#111111}.brand small{color:#333333;font-size:11px}
@@ -28,7 +28,7 @@ aside{background:#ffffff;border-right:1.5px solid #111111;padding:18px 12px;posi
 .nav .sec{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#444444;font-weight:700;margin:16px 10px 6px}
 .nav .ct{margin-left:auto;background:#dc2626;color:#ffffff;font-size:11px;border-radius:10px;padding:0 7px;font-weight:700}
 .side-foot{margin-top:18px;padding:10px;border-top:1px solid #111111;font-size:12px;color:#333333}
-main{padding:22px 28px 60px;min-width:0;background:#ffffff}
+main{padding:22px 28px 60px;min-width:0;background:#f4f8fc}
 .top{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
 .top h1{font-size:21px;margin:0;color:#111111}
 .top .sub{color:#333333;font-size:13px}
@@ -44,6 +44,8 @@ main{padding:22px 28px 60px;min-width:0;background:#ffffff}
 .c21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
 .card{background:#ffffff;border:1.5px solid #111111;border-radius:var(--radius);padding:16px;color:#111111}
 .card.kpi{background:#ffffff;border:1.5px solid #111111}
+.card.kpi.kpi-pos{background:#dcfce7 !important;border-color:#15803d !important}
+.card.kpi.kpi-neg{background:#fee2e2 !important;border-color:#dc2626 !important}
 .card h3{margin:0 0 12px;font-size:14px;display:flex;align-items:center;gap:8px;color:#111111}
 .card h3 small{color:#333333;font-weight:400}
 .kpi .l{color:#111111;font-size:12px;font-weight:600}
@@ -102,7 +104,7 @@ label.f input,label.f select{color:#111111;font-size:14px;min-width:0;width:100%
 pre.code{background:#ffffff;border:1.5px solid #111111;border-radius:8px;padding:12px;font:12px/1.5 var(--mono);overflow:auto;color:#111111;max-height:340px}
 canvas{background:#ffffff}
 .checklist td:last-child{text-align:right}
-.login{min-height:100vh;display:grid;place-items:center;background:#ffffff}
+.login{min-height:100vh;display:grid;place-items:center;background:#f4f8fc}
 .login .card{width:360px}
 @media (max-width:1100px){.k7,.k6{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.c21,.k2{grid-template-columns:1fr}.form{grid-template-columns:1fr 1fr}}
 @media (max-width:760px){.app{grid-template-columns:1fr}aside{position:static;height:auto}.k7,.k4,.k3,.k6{grid-template-columns:1fr 1fr}.form{grid-template-columns:1fr}main{padding:16px}}
@@ -675,7 +677,10 @@ function traderSelect(id, val, all){
   });
   return `<select id="${id}">${all?`<option value="">All accounts / traders</option>`:''}${list.map(t=>`<option value="${t.id}" ${t.id===val?'selected':''}>${esc(t.name)} · ${t.id}</option>`).join('')}</select>`;
 }
-function kpi(l,v,h='',c=''){ return `<div class="card kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div>${h?`<div class="h">${h}</div>`:''}</div>`; }
+function kpi(l,v,h='',c=''){
+  const boxCls = c==='pos' ? ' kpi-pos' : (c==='neg' ? ' kpi-neg' : '');
+  return `<div class="card kpi${boxCls}"><div class="l">${l}</div><div class="v ${c}">${v}</div>${h?`<div class="h">${h}</div>`:''}</div>`;
+}
 
 // ---------- views ----------
 const V = {};
@@ -1842,6 +1847,17 @@ function undoRuleEdits(){
   render();
   toast('Unsaved rule edits reverted');
 }
+function relatedRuleIds(id){
+  const ids = new Set([id]);
+  (S.accounts || []).forEach(a => {
+    if(a.id === id || a.trader === id || a.zebu_uid === id){
+      ids.add(a.id);
+      if(a.trader) ids.add(a.trader);
+      if(a.zebu_uid) ids.add(a.zebu_uid);
+    }
+  });
+  return [...ids];
+}
 async function deleteAllRulesForAccount(){
   let id = SEL.trader;
   if(!trader(id) && !account(id) && !S.accounts.some(a=>a.zebu_uid===id) && S.traders && S.traders.length){
@@ -1850,17 +1866,21 @@ async function deleteAllRulesForAccount(){
   }
   const ownerName = trader(id)?.name || account(id)?.name || id;
   if(!confirm(`Delete all rules for "${ownerName}" (${id}) and remove all red flags for this account?`)) return;
-  S.rules[id] = {...NO_RULES};
+  const relIds = relatedRuleIds(id);
+  relIds.forEach(rid => { S.rules[rid] = {...NO_RULES}; });
   const change = 'All rules deleted for account';
   S.ruleLog.push({trader:id, at:TODAY+' '+new Date().toTimeString().slice(0,5), by:USER, change});
-  VIOLATIONS = VIOLATIONS.filter(v => v.account !== id && v.trader !== id);
+  VIOLATIONS = VIOLATIONS.filter(v => !relIds.includes(v.account) && !relIds.includes(v.trader));
+  invalidate();
   save();
+  render();
   if(LIVE){
     try {
-      await API.deleteRules(id).catch(() => API.saveRules(id, {...NO_RULES}, change));
+      await Promise.all(relIds.map(rid => API.deleteRules(rid).catch(() => API.saveRules(rid, {...NO_RULES}, change))));
       await API.syncAll();
     } catch(e){ toast('Server: ' + e.message); }
   }
+  invalidate();
   render();
   toast('All rules deleted and red flags removed');
 }
@@ -1874,8 +1894,16 @@ function saveRules(){
   Object.keys(DEFAULT_RULES).forEach(k=>{ let v=val('r_'+k); if(['strikeDist','maxTradesDay','maxLots','slPerLot','dailyLoss'].includes(k)) v=Number(v)||0; if(k==='hedge') v=v==='true'; r[k]=v; });
   const ch=Object.keys(r).filter(k=>String(r[k])!==String(old[k])).map(k=>`${k}: ${old[k]} → ${r[k]}`);
   if(!ch.length){ toast('No changes'); return; }
-  S.rules[id]=r; const change=ch.join(' · '); S.ruleLog.push({trader:id,at:TODAY+' '+new Date().toTimeString().slice(0,5),by:USER,change});
-  save(); liveCall(()=>API.saveRules(id,r,change)); render(); toast('Rules saved — trades re-checked & old red flags cleared');
+  const relIds = relatedRuleIds(id);
+  relIds.forEach(rid => { S.rules[rid] = {...r}; });
+  const change=ch.join(' · '); S.ruleLog.push({trader:id,at:TODAY+' '+new Date().toTimeString().slice(0,5),by:USER,change});
+  invalidate();
+  save();
+  liveCall(async () => {
+    await Promise.all(relIds.map(rid => API.saveRules(rid, r, change)));
+  });
+  render();
+  toast('Rules saved — red flags updated according to new rules');
 }
 function editTrade(id){
   closeModal();
