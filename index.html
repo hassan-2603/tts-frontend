@@ -1411,12 +1411,25 @@ async function submitManualCode(aid){
 function linkZebu(id){
   openLinkModal(id);
 }
+let _isRefreshingLive = false;
 async function refreshLive(){ 
-  if(!LIVE) return; 
+  if(!LIVE || _isRefreshingLive) return; 
+  _isRefreshingLive = true;
   try { 
+    if(VIEW === 'report' || VIEW === 'overview' || VIEW === 'trades'){
+      const targetId = SEL.trader;
+      const acc = account(targetId) || S.accounts.find(a => a.zebu_uid === targetId || a.trader === targetId);
+      if(acc && acc.link === 'Linked'){
+        await API.syncAccount(acc.id).catch(()=>{});
+      } else {
+        await API.req('/sync', {method:'POST'}).catch(()=>{});
+      }
+    }
     await API.syncAll(); 
     render(); 
-  } catch(e){} 
+  } catch(e){} finally {
+    _isRefreshingLive = false;
+  }
 }
 
 function saveRules(){
