@@ -19,12 +19,14 @@ html,body{margin:0;background:#f4f8fc;color:#111111;font:14px/1.45 Inter,system-
 a{color:#111111}
 .app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;background:#f4f8fc}
 aside{background:#f8fbff;border-right:1.5px solid #111111;padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
-.brand{display:flex;gap:10px;align-items:center;padding:4px 8px 18px}
-.logo{width:34px;height:34px;border-radius:8px;background:#111111;border:1.5px solid #111111;display:grid;place-items:center;font-weight:700;color:#ffffff}
-.brand b{display:block;font-size:14px;color:#111111}.brand small{color:#333333;font-size:11px}
-.nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:#111111;text-decoration:none;font-weight:500;margin-bottom:2px;border:1px solid transparent}
-.nav a:hover{background:#f3f4f6;color:#000000;border-color:#111111}
-.nav a.on{background:#f3f4f6;color:#000000;font-weight:700;border:1px solid #111111;box-shadow:inset 3px 0 0 #111111}
+.brand{display:flex;gap:10px;align-items:center;width:100%;padding:10px 11px;margin-bottom:14px;background:#d6f1ff;border:2px solid #0369a1;border-radius:8px;box-shadow:0 3px 6px rgba(3,105,161,.22);transition:background .15s ease,border-color .15s ease,box-shadow .15s ease}
+.brand:hover{background:#93dafc;border-color:#075985;box-shadow:0 4px 8px rgba(3,105,161,.32)}
+.logo{width:34px;height:34px;flex-shrink:0;border-radius:8px;background:#111111;border:1.5px solid #111111;display:grid;place-items:center;font-weight:700;color:#ffffff}
+.brand b{display:block;font-size:14px;color:#111111;line-height:1.25}.brand small{display:block;color:#1e293b;font-size:11px;font-weight:600;margin-top:2px}
+.nav a{display:flex;align-items:center;gap:10px;width:100%;height:40px;padding:0 11px;border-radius:8px;background:#d6f1ff;color:#111111;text-decoration:none;font-weight:700;margin-bottom:7px;border:2px solid #0369a1;box-shadow:0 3px 6px rgba(3,105,161,.22);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,transform .12s ease}
+.nav a:hover{background:#93dafc;color:#000000;border-color:#075985;box-shadow:0 4px 8px rgba(3,105,161,.32);transform:translateY(-1px)}
+.nav a.on{background:#7dd3fc;color:#000000;font-weight:700;border:2px solid #075985;box-shadow:inset 4px 0 0 #075985,0 3px 6px rgba(3,105,161,.28)}
+.nav a.on:hover{background:#5ec5fa;border-color:#0c4a6e}
 .nav .sec{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#444444;font-weight:700;margin:16px 10px 6px}
 .nav .ct{margin-left:auto;background:#dc2626;color:#ffffff;font-size:11px;border-radius:10px;padding:0 7px;font-weight:700}
 .side-foot{margin-top:18px;padding:10px;border-top:1px solid #111111;font-size:12px;color:#333333}
