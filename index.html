@@ -10,93 +10,99 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
-  --bg:#0b1020; --panel:#121a2e; --panel2:#18223a; --line:#24304d; --text:#e6ebf5; --muted:#8a96b2;
-  --accent:#4f8cff; --green:#22c38e; --red:#ff5d6c; --amber:#f5b544; --violet:#a78bfa;
-  --radius:12px; --mono:'JetBrains Mono',ui-monospace,monospace;
+  --bg:#ffffff; --panel:#ffffff; --panel2:#f8f8f8; --line:#111111; --text:#111111; --muted:#333333;
+  --accent:#111111; --green:#15803d; --red:#dc2626; --amber:#b45309; --violet:#111111;
+  --radius:10px; --mono:'JetBrains Mono',ui-monospace,monospace;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
-a{color:var(--accent)}
-.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
-aside{background:#0e1529;border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+html,body{margin:0;background:#ffffff;color:#111111;font:14px/1.45 Inter,system-ui,sans-serif}
+a{color:#111111}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;background:#ffffff}
+aside{background:#ffffff;border-right:1.5px solid #111111;padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
 .brand{display:flex;gap:10px;align-items:center;padding:4px 8px 18px}
-.logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#4f8cff,#22c38e);display:grid;place-items:center;font-weight:700;color:#06101f}
-.brand b{display:block;font-size:14px}.brand small{color:var(--muted);font-size:11px}
-.nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:500;margin-bottom:2px}
-.nav a:hover{background:var(--panel);color:var(--text)}
-.nav a.on{background:var(--panel2);color:var(--text);box-shadow:inset 3px 0 0 var(--accent)}
-.nav .sec{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#5b678a;margin:16px 10px 6px}
-.nav .ct{margin-left:auto;background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:0 7px}
-.side-foot{margin-top:18px;padding:10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
-main{padding:22px 28px 60px;min-width:0}
+.logo{width:34px;height:34px;border-radius:8px;background:#111111;border:1.5px solid #111111;display:grid;place-items:center;font-weight:700;color:#ffffff}
+.brand b{display:block;font-size:14px;color:#111111}.brand small{color:#333333;font-size:11px}
+.nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:#111111;text-decoration:none;font-weight:500;margin-bottom:2px;border:1px solid transparent}
+.nav a:hover{background:#f3f4f6;color:#000000;border-color:#111111}
+.nav a.on{background:#f3f4f6;color:#000000;font-weight:700;border:1px solid #111111;box-shadow:inset 3px 0 0 #111111}
+.nav .sec{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#444444;font-weight:700;margin:16px 10px 6px}
+.nav .ct{margin-left:auto;background:#dc2626;color:#ffffff;font-size:11px;border-radius:10px;padding:0 7px;font-weight:700}
+.side-foot{margin-top:18px;padding:10px;border-top:1px solid #111111;font-size:12px;color:#333333}
+main{padding:22px 28px 60px;min-width:0;background:#ffffff}
 .top{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
-.top h1{font-size:21px;margin:0}
-.top .sub{color:var(--muted);font-size:13px}
+.top h1{font-size:21px;margin:0;color:#111111}
+.top .sub{color:#333333;font-size:13px}
 .top .sp{flex:1}
-.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
-.pill-linked{background:#064e3b;color:#34d399;border:1px solid #059669;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
-.pill-disconnected{background:#450a0a;color:#f87171;border:1px solid #dc2626;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
-.p-test{background:#1d2c55;color:#8fb3ff}.p-live{background:#0f3a2d;color:#4fe0ad}.p-watch{background:#3d3015;color:#ffc861}.p-stop{background:#3d1820;color:#ff8792}
-.p-high{background:#3d1820;color:#ff8792}.p-med{background:#3d3015;color:#ffc861}.p-low{background:#232c45;color:#aab6d3}
-.p-pass{background:#0f3a2d;color:#4fe0ad}.p-fail{background:#3d1820;color:#ff8792}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;border:1px solid #111111}
+.pill-linked{background:#dcfce7;color:#15803d;border:1px solid #15803d;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.pill-disconnected{background:#fee2e2;color:#dc2626;border:1px solid #dc2626;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.p-test{background:#ffffff;color:#111111;border:1px solid #111111}.p-live{background:#dcfce7;color:#15803d;border:1px solid #15803d}.p-watch{background:#fef3c7;color:#92400e;border:1px solid #b45309}.p-stop{background:#fee2e2;color:#dc2626;border:1px solid #dc2626}
+.p-high{background:#fee2e2;color:#dc2626;border:1px solid #dc2626}.p-med{background:#fef3c7;color:#92400e;border:1px solid #b45309}.p-low{background:#ffffff;color:#111111;border:1px solid #111111}
+.p-pass{background:#dcfce7;color:#15803d;border:1px solid #15803d}.p-fail{background:#fee2e2;color:#dc2626;border:1px solid #dc2626}
 .grid{display:grid;gap:14px}
 .k7{grid-template-columns:repeat(7,1fr)}.k6{grid-template-columns:repeat(6,1fr)}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.k2{grid-template-columns:1fr 1fr}
 .c21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
-.card h3{margin:0 0 12px;font-size:14px;display:flex;align-items:center;gap:8px}
-.card h3 small{color:var(--muted);font-weight:400}
-.kpi .l{color:var(--muted);font-size:12px}
-.kpi .v{font-size:22px;font-weight:700;font-family:var(--mono);margin-top:4px}
-.kpi .h{color:var(--muted);font-size:11.5px;margin-top:2px}
-.pos{color:var(--green)}.neg{color:var(--red)}.amb{color:var(--amber)}
-table{width:100%;border-collapse:collapse}
-th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-td{padding:9px 10px;white-space:nowrap;border-bottom:1px solid #1c2640;vertical-align:middle}
-tr.click{cursor:pointer}tr.click:hover td{background:#16203a}
+.card{background:#ffffff;border:1.5px solid #111111;border-radius:var(--radius);padding:16px;color:#111111}
+.card.kpi{background:#ffffff;border:1.5px solid #111111}
+.card h3{margin:0 0 12px;font-size:14px;display:flex;align-items:center;gap:8px;color:#111111}
+.card h3 small{color:#333333;font-weight:400}
+.kpi .l{color:#111111;font-size:12px;font-weight:600}
+.kpi .v{font-size:22px;font-weight:700;font-family:var(--mono);margin-top:4px;color:#111111}
+.kpi .v.pos{color:#15803d}
+.kpi .v.neg{color:#dc2626}
+.kpi .h{color:#333333;font-size:11.5px;margin-top:2px}
+.pos{color:#15803d !important;font-weight:700}.neg{color:#dc2626 !important;font-weight:700}.amb{color:#b45309 !important;font-weight:600}
+table{width:100%;border-collapse:collapse;background:#ffffff;color:#111111}
+th{text-align:left;color:#111111;font-weight:700;font-size:12px;padding:8px 10px;border-bottom:1.5px solid #111111;white-space:nowrap;background:#ffffff}
+td{padding:9px 10px;white-space:nowrap;border-bottom:1px solid #d1d5db;vertical-align:middle;color:#111111}
+tr.click{cursor:pointer}tr.click:hover td{background:#f3f4f6}
 td.n,th.n{text-align:right;font-family:var(--mono)}
-.tbl-wrap{overflow:auto;max-height:560px}
-.btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font:inherit;font-weight:500;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
-.btn:hover{border-color:#3a4a73}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn.danger{color:#ff8792}
+.tbl-wrap{overflow:auto;max-height:560px;background:#ffffff}
+.btn{background:#ffffff;color:#111111;border:1.5px solid #111111;border-radius:8px;padding:7px 12px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
+.btn:hover{background:#f3f4f6;border-color:#000000}
+.btn.pri{background:#111111;border-color:#111111;color:#ffffff}
+.btn.pri:hover{background:#222222}
+.btn.danger{background:#ffffff;border-color:#dc2626;color:#dc2626}
+.btn.danger:hover{background:#fee2e2}
 .btn.sm{padding:4px 9px;font-size:12px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
-.btn-connect{background:#059669 !important;border-color:#10b981 !important;color:#fff !important;font-weight:600}
-.btn-connect:hover{background:#047857 !important}
-.btn-disconnect{background:#7f1d1d !important;border-color:#ef4444 !important;color:#fecaca !important;font-weight:600}
-.btn-disconnect:hover{background:#991b1b !important;color:#fff !important}
-.btn-relink{background:#1e3a8a !important;border-color:#3b82f6 !important;color:#bfdbfe !important;font-weight:600}
-.btn-relink:hover{background:#1d4ed8 !important;color:#fff !important}
-input,select,textarea{background:#0d1428;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 9px;font:inherit}
-input:focus,select:focus,textarea:focus{outline:1px solid var(--accent)}
-label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
-label.f input,label.f select{color:var(--text);font-size:14px;min-width:0;width:100%}
+.btn-connect{background:#15803d !important;border-color:#15803d !important;color:#ffffff !important;font-weight:600}
+.btn-connect:hover{background:#166534 !important}
+.btn-disconnect{background:#ffffff !important;border-color:#dc2626 !important;color:#dc2626 !important;font-weight:600}
+.btn-disconnect:hover{background:#fee2e2 !important}
+.btn-relink{background:#ffffff !important;border-color:#111111 !important;color:#111111 !important;font-weight:600}
+.btn-relink:hover{background:#f3f4f6 !important}
+input,select,textarea{background:#ffffff;border:1.5px solid #111111;color:#111111;border-radius:8px;padding:7px 9px;font:inherit}
+input:focus,select:focus,textarea:focus{outline:2px solid #111111}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:#111111;font-weight:600}
+label.f input,label.f select{color:#111111;font-size:14px;min-width:0;width:100%;font-weight:400}
 .form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.muted{color:var(--muted)}.mono{font-family:var(--mono)}
+.muted{color:#333333}.mono{font-family:var(--mono)}
 .flow{display:flex;gap:10px;align-items:stretch}
-.flow .st{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
-.flow .st b{display:block;font-size:13px}.flow .st span{font-size:12px;color:var(--muted)}
-.flow .st .no{font-family:var(--mono);color:var(--accent);font-weight:700}
-.flagtxt{font-size:12.5px;white-space:normal;min-width:220px}
-.chip{display:inline-block;background:#1b2542;border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:11.5px;margin:2px 3px 2px 0}
-.chip.bad{border-color:#6b2532;color:#ff8792}
-.modal-bg{position:fixed;inset:0;background:rgba(3,6,15,.7);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.flow .st{flex:1;background:#ffffff;border:1.5px solid #111111;border-radius:10px;padding:12px}
+.flow .st b{display:block;font-size:13px;color:#111111}.flow .st span{font-size:12px;color:#333333}
+.flow .st .no{font-family:var(--mono);color:#111111;font-weight:700}
+.flagtxt{font-size:12.5px;white-space:normal;min-width:220px;color:#111111}
+.chip{display:inline-block;background:#ffffff;border:1px solid #111111;border-radius:6px;padding:2px 7px;font-size:11.5px;margin:2px 3px 2px 0;color:#111111}
+.chip.bad{border-color:#dc2626;color:#dc2626;background:#fee2e2}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal-bg.on{display:flex}
-.modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:min(820px,100%);max-height:90vh;overflow:auto;padding:20px}
-.modal h2{margin:0 0 14px;font-size:17px}
-.toast{position:fixed;bottom:20px;right:20px;background:#13213f;border:1px solid var(--accent);padding:10px 14px;border-radius:10px;z-index:60;display:none}
+.modal{background:#ffffff;border:2px solid #111111;border-radius:14px;width:min(820px,100%);max-height:90vh;overflow:auto;padding:20px;color:#111111}
+.modal h2{margin:0 0 14px;font-size:17px;color:#111111}
+.toast{position:fixed;bottom:20px;right:20px;background:#ffffff;color:#111111;border:1.5px solid #111111;padding:10px 14px;border-radius:10px;z-index:60;display:none;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.15)}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .cal div{aspect-ratio:1.6;border-radius:5px;font-size:10.5px;display:flex;flex-direction:column;justify-content:center;align-items:center;font-family:var(--mono)}
-.cal .hd{aspect-ratio:auto;color:var(--muted);font-family:Inter}
-.bar{height:8px;background:#1b2542;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%}
-.tabs{display:flex;gap:4px;background:#0d1428;border:1px solid var(--line);border-radius:9px;padding:3px}
-.tabs button{background:none;border:0;color:var(--muted);padding:5px 11px;border-radius:6px;font:inherit;font-size:12.5px;cursor:pointer}
-.tabs button.on{background:var(--panel2);color:var(--text)}
-.note{background:#101a33;border:1px dashed #33467a;border-radius:10px;padding:12px;color:#b5c2e0;font-size:12.5px}
-pre.code{background:#0a1022;border:1px solid var(--line);border-radius:8px;padding:12px;font:12px/1.5 var(--mono);overflow:auto;color:#c5d2f0;max-height:340px}
+.cal .hd{aspect-ratio:auto;color:#111111;font-weight:700;font-family:Inter}
+.bar{height:8px;background:#e5e7eb;border:1px solid #111111;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%}
+.tabs{display:flex;gap:4px;background:#ffffff;border:1.5px solid #111111;border-radius:9px;padding:3px}
+.tabs button{background:none;border:0;color:#111111;padding:5px 11px;border-radius:6px;font:inherit;font-size:12.5px;cursor:pointer;font-weight:500}
+.tabs button.on{background:#111111;color:#ffffff;font-weight:700}
+.note{background:#ffffff;border:1.5px dashed #111111;border-radius:10px;padding:12px;color:#111111;font-size:12.5px}
+pre.code{background:#ffffff;border:1.5px solid #111111;border-radius:8px;padding:12px;font:12px/1.5 var(--mono);overflow:auto;color:#111111;max-height:340px}
+canvas{background:#ffffff}
 .checklist td:last-child{text-align:right}
-.login{min-height:100vh;display:grid;place-items:center}
+.login{min-height:100vh;display:grid;place-items:center;background:#ffffff}
 .login .card{width:360px}
 @media (max-width:1100px){.k7,.k6{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.c21,.k2{grid-template-columns:1fr}.form{grid-template-columns:1fr 1fr}}
 @media (max-width:760px){.app{grid-template-columns:1fr}aside{position:static;height:auto}.k7,.k4,.k3,.k6{grid-template-columns:1fr 1fr}.form{grid-template-columns:1fr}main{padding:16px}}
@@ -647,7 +653,7 @@ function shell(inner){
       `<a href="#${n[0]}" onclick="go('${n[0]}');return false" class="${VIEW===n[0]?'on':''}"><span style="width:18px;text-align:center">${n[2]}</span>${n[1]}${n[0]==='flags'&&nf?`<span class="ct">${nf}</span>`:''}</a>`).join('')}</nav>
     <div class="side-foot">Signed in as <b>${esc(USER)}</b> · <span class="pill ${ROLE==='admin'?'p-live':'p-test'}">${ROLE}</span><br>
       Data: <b>${LIVE?'Live · Zebu':'Demo data'}</b>${LIVE&&STATUS.poll?.last?`<br><span style="font-size:11px">Last sync ${esc(STATUS.poll.last.slice(11,16))}</span>`:''}<br>
-      <span style="color:#5b678a">Tracking only — places no trades.</span><br><a href="#" onclick="logout();return false">Sign out</a></div>
+      <span style="color:#444444">Tracking only — places no trades.</span><br><a href="#" onclick="logout();return false">Sign out</a></div>
   </aside><main>${inner}</main></div>`;
 }
 function header(title, sub, right=''){ return `<div class="top"><div><h1>${title}</h1>${sub?`<div class="sub">${sub}</div>`:''}</div><div class="sp"></div>${right}</div>`; }
@@ -810,8 +816,8 @@ V.rules = () => {
     </div>
     ${canEdit()?`<div class="row" style="margin-top:14px;flex-wrap:wrap;gap:8px"><button class="btn pri" onclick="saveRules()">Save rules</button><button class="btn" type="button" onclick="undoRuleEdits()">Undo changes</button><button class="btn danger" type="button" onclick="deleteAllRulesForAccount()">Delete all rules</button><span class="muted" style="font-size:12px">Click ✕ on any rule to turn it off, then Save — red flags for removed rules will be cleared.</span></div>`:`<div class="note" style="margin-top:12px">Viewer role — read only.</div>`}
   </div>
-  <div><div class="card"><h3>In plain words</h3>${ruleSummary(r).map(x=>`<div style="padding:5px 0;border-bottom:1px solid #1c2640">${x}</div>`).join('')}</div>
-  <div class="card" style="margin-top:14px"><h3>Change history</h3>${log.map(l=>`<div style="padding:6px 0;border-bottom:1px solid #1c2640;font-size:12.5px"><span class="mono muted">${l.at}</span> · <b>${esc(l.by)}</b><br>${esc(l.change)}</div>`).join('')||'<span class="muted">No changes yet</span>'}</div></div></div>`;
+  <div><div class="card"><h3>In plain words</h3>${ruleSummary(r).map(x=>`<div style="padding:5px 0;border-bottom:1px solid #d1d5db">${x}</div>`).join('')}</div>
+  <div class="card" style="margin-top:14px"><h3>Change history</h3>${log.map(l=>`<div style="padding:6px 0;border-bottom:1px solid #d1d5db;font-size:12.5px"><span class="mono muted">${l.at}</span> · <b>${esc(l.by)}</b><br>${esc(l.change)}</div>`).join('')||'<span class="muted">No changes yet</span>'}</div></div></div>`;
 };
 function ruleSummary(r){ return [
   `Instrument: <b>${r.instrument||'ANY'}</b> · ${r.expiry||'ANY'} expiry`,
@@ -1007,10 +1013,13 @@ function calendar(m){
     const v=map[s], dm=meta[s];
     const a=v==null?0:Math.min(1,Math.abs(v)/mx)*.8+.15;
     if(v==null){
-      html+=`<div style="background:#0f1730;color:#3d4a6b">${s.slice(8)}</div>`;
+      html+=`<div style="background:#ffffff;color:#555555;border:1px solid #d1d5db">${s.slice(8)}</div>`;
     } else {
       const tip = dm ? `${s} (${dm.status||'FINALIZED'})\nRealized P&L: ${inr(dm.realized_pnl)}\nNet P&L: ${inr(dm.net_pnl)} (Charges: ${inr(dm.charges)})\nTrades: ${dm.trades} (${dm.wins}W / ${dm.losses}L)` : `${s}: ${inr(v)}`;
-      html+=`<div title="${esc(tip)}" style="cursor:pointer;background:${v>=0?`rgba(34,195,142,${a})`:`rgba(255,93,108,${a})`}" onclick="openCalendarDay('${s}')"><b>${s.slice(8)}</b>${inrS(v).replace('₹','')}</div>`;
+      const bg = v>=0 ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
+      const fg = v>=0 ? '#15803d' : '#dc2626';
+      const bd = v>=0 ? '#15803d' : '#dc2626';
+      html+=`<div title="${esc(tip)}" style="cursor:pointer;background:${bg};color:${fg};border:1px solid ${bd};font-weight:700" onclick="openCalendarDay('${s}')"><b>${s.slice(8)}</b>${inrS(v).replace('₹','')}</div>`;
     }
   }
   return html+'</div>';
@@ -1083,8 +1092,8 @@ function drawReportCharts(m, trades=[], isDay=false){
       tooltip: { callbacks: { label: c => inr(c.parsed.y) } }
     },
     scales: {
-      x: { ticks: { color: '#8a96b2', maxTicksLimit: 10 }, grid: { color: '#1c2640' } },
-      y: { ticks: { color: '#8a96b2', callback: v => inrS(v) }, grid: { color: '#1c2640' } }
+      x: { ticks: { color: '#111111', maxTicksLimit: 10 }, grid: { color: '#e5e7eb' }, border: { color: '#111111' } },
+      y: { ticks: { color: '#111111', callback: v => inrS(v) }, grid: { color: '#e5e7eb' }, border: { color: '#111111' } }
     }
   };
 
@@ -1095,12 +1104,17 @@ function drawReportCharts(m, trades=[], isDay=false){
       labels,
       datasets: [{
         data: series,
-        borderColor: '#22c38e',
-        backgroundColor: 'rgba(34,195,142,.12)',
-        fill: true,
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(34,197,94,0.25)',
+        fill: {
+          target: 'origin',
+          above: 'rgba(34,197,94,0.28)',
+          below: 'rgba(239,68,68,0.28)'
+        },
         tension: 0.2,
         pointRadius: series.length > 25 ? 0 : 3,
-        borderWidth: 2
+        pointBackgroundColor: '#38bdf8',
+        borderWidth: 2.2
       }]
     },
     options: base
@@ -1112,12 +1126,17 @@ function drawReportCharts(m, trades=[], isDay=false){
       labels,
       datasets: [{
         data: dd,
-        borderColor: '#ff5d6c',
-        backgroundColor: 'rgba(255,93,108,.18)',
-        fill: true,
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(239,68,68,0.28)',
+        fill: {
+          target: 'origin',
+          above: 'rgba(34,197,94,0.28)',
+          below: 'rgba(239,68,68,0.28)'
+        },
         tension: 0.2,
         pointRadius: dd.length > 25 ? 0 : 3,
-        borderWidth: 1.5
+        pointBackgroundColor: '#38bdf8',
+        borderWidth: 2
       }]
     },
     options: base
@@ -1321,9 +1340,9 @@ function openFlagDetail(tradeId, clickedRule){
       <span class="pill ${st==='ACTIVE'?'p-high':'p-low'}">${esc(st)}</span>
       <span class="muted" style="font-size:12.5px"><b>${esc(who)}</b> · Account <span class="mono">${esc(t.account||'—')}</span> · ${fmtDate(t.date)} at <b>${esc(t.time)} IST</b></span>
     </div>
-    <div style="background:#0f172a;border:1px solid #ef4444;border-radius:10px;padding:16px;margin-bottom:14px">
-      <div style="font-size:12px;color:#f87171;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Simple Explanation</div>
-      <div style="font-size:14.5px;line-height:1.55;color:#f8fafc">${easyReason}</div>
+    <div style="background:#ffffff;border:1.5px solid #dc2626;border-radius:10px;padding:16px;margin-bottom:14px">
+      <div style="font-size:12px;color:#dc2626;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Simple Explanation</div>
+      <div style="font-size:14.5px;line-height:1.55;color:#111111">${easyReason}</div>
     </div>
     <div class="grid k3" style="margin-bottom:14px">
       ${kpi('Rule Broken', esc(f.rule), '')}
@@ -1344,10 +1363,10 @@ function openTrade(id){
   const r=S.rules[t.account]||S.rules[t.trader]||DEFAULT_RULES, m=moneyness(t,S.settings.strikeStep);
   const hasPnl = !(t.open && (t.pnl === null || t.pnl === undefined));
   const pnlVal = hasPnl ? inr(tradePnl(t)) : 'Pending LTP';
-  const unevalHtml = u.length ? u.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #1c2640"><span class="pill p-watch">MISSING DATA</span> <b>${esc(x.rule)}</b> — ${esc(x.reason)}</div>`).join('') : '';
+  const unevalHtml = u.length ? u.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #d1d5db"><span class="pill p-watch">MISSING DATA</span> <b>${esc(x.rule)}</b> — ${esc(x.reason)}</div>`).join('') : '';
   modal(`<h2>Trade ${t.id} · ${esc(trader(t.trader)?.name || t.account)} ${f.length?'<span class="pill p-high">🚩 '+f.length+' red flag(s)</span>':u.length?'<span class="pill p-watch">Partial rule check (missing broker data)</span>':'<span class="pill p-pass">All rules followed</span>'}</h2>
   <div class="grid k4">${kpi('Instrument',t.symbol+' '+(t.strike||'')+' '+(t.opt||''),mLabel(m.d)+' · spot '+(t.spot?Math.round(t.spot):'n/a'))}${kpi('Entry → exit',t.entry+' → '+(t.open?'OPEN @ '+(t.exit??'—'):t.exit),t.date+' '+t.time+' → '+(t.exitDate||t.date)+' '+(t.exitTime||'OPEN'))}${kpi('Lots',t.lots+' × '+t.lotSize,t.side+' · '+t.product+' · '+t.source)}${kpi(t.open?'Open P&L (LTP)':'Realized P&L',pnlVal,'charges '+(t.chargesEstimated?'≈ ':'')+inr(t.charges)+(t.tsym?' · '+esc(t.tsym):''),hasPnl?cls(tradePnl(t)):'muted')}</div>
-  <div class="card" style="margin-top:14px"><h3>Rule check (${esc(t.account)})</h3>${f.length? f.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #1c2640">${levelPill(x.level)} <b>${esc(x.rule)}</b> — ${esc(x.did)} <span class="muted" style="font-size:11px">[${esc(x.status||'ACTIVE')}]</span></div>`).join('') : '<span class="pos">✓ No rule violations detected on available data.</span>'}${unevalHtml}
+  <div class="card" style="margin-top:14px"><h3>Rule check (${esc(t.account)})</h3>${f.length? f.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #d1d5db">${levelPill(x.level)} <b>${esc(x.rule)}</b> — ${esc(x.did)} <span class="muted" style="font-size:11px">[${esc(x.status||'ACTIVE')}]</span></div>`).join('') : '<span class="pos">✓ No rule violations detected on available data.</span>'}${unevalHtml}
    <div class="muted" style="font-size:12px;margin-top:8px">Expected strike by rule: <b>${expectedStrike(t,r,S.settings.strikeStep)} ${t.opt||''}</b> (${r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode})</div></div>
   <div class="row" style="margin-top:14px;justify-content:flex-end">${canEdit()&&!(LIVE&&t.origin==='zebu')?`<button class="btn danger" onclick="delTrade('${t.id}')">Delete</button><button class="btn" onclick="editTrade('${t.id}')">Edit</button>`:''}${LIVE&&t.origin==='zebu'?`<span class="muted" style="font-size:12px;margin-right:auto">From Zebu trade book · ${t.is_finalized?'Finalized':'Live'} · charges estimated</span>`:''}<button class="btn pri" onclick="closeModal()">Close</button></div>`);
 }
@@ -1593,9 +1612,9 @@ function saveTrader(id){
 function editAccount(id){
   const a=id?account(id):{id:'AC-'+String(S.accounts.length+1).padStart(2,'0'),name:'Account '+(S.accounts.length+1),broker:LIVE?'Zebu':'Angel One',trader:S.traders[0]?.id,zebu_uid:'',zebu_actid:'',zebu_secret_key:'',proxy_url:''};
   const statusHtml = id && LIVE && a.broker === 'Zebu' ? `
-    <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div style="background:#ffffff;border:1.5px solid #111111;border-radius:8px;padding:12px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:12px;color:#94a3b8">Broker Connection Status:</div>
+        <div style="font-size:12px;color:#333333">Broker Connection Status:</div>
         <div style="margin-top:4px">${linkPill(a)}</div>
       </div>
       <div>
@@ -1620,7 +1639,7 @@ function editAccount(id){
         <input id="a_proxy" value="${esc(a.proxy_url||'')}" placeholder="e.g. http://user:pass@79.127.168.43:port" style="flex:1">
         <button class="btn sm" type="button" id="btnCheckProxyIp" onclick="checkOutboundIp()">🔍 Check IP</button>
       </div>
-      <div id="proxy_ip_result" style="font-size:11.5px;margin-top:4px;color:#94a3b8"></div>
+      <div id="proxy_ip_result" style="font-size:11.5px;margin-top:4px;color:#333333"></div>
     </label>
     <label class="f">Zebu Account ID (actid)<input id="a_zact" value="${esc(a.zebu_actid||'')}" placeholder="usually same as uid"></label>
   </div>
@@ -1642,7 +1661,7 @@ async function checkOutboundIp(){
     const hc = r.http_client || {};
     if(hc.ok && hc.ip){
       if(box){
-        box.innerHTML = `✅ Outbound IP reaching Zebu: <code style="background:#0f172a;color:#38bdf8;padding:2px 6px;border-radius:4px;font-weight:700">${esc(hc.ip)}</code> — Put this exact IP in Zebu's Static IP whitelist.`;
+        box.innerHTML = `✅ Outbound IP reaching Zebu: <code style="background:#ffffff;color:#111111;border:1px solid #111111;padding:2px 6px;border-radius:4px;font-weight:700">${esc(hc.ip)}</code> — Put this exact IP in Zebu's Static IP whitelist.`;
       }
     } else {
       if(box){
@@ -1734,18 +1753,18 @@ function openLinkModal(id){
   const proxyHost = a.proxy_url ? esc((a.proxy_url.split('@').pop() || a.proxy_url).replace(/^(https?|socks5):\/\//i, '').split('/')[0]) + ' (Dedicated Proxy)' : 'Direct IP';
   modal(`
     <div style="font-weight:700;font-size:16px;margin-bottom:6px">🔗 Connect ${esc(a.name)} to Zebu</div>
-    <div class="muted" style="font-size:12px;margin-bottom:14px">Client ID: <code style="color:#38bdf8">${esc(uid)}</code> · Proxy: <b style="color:${a.proxy_url?'#4ade80':'#94a3b8'}">${proxyHost}</b></div>
+    <div class="muted" style="font-size:12px;margin-bottom:14px">Client ID: <code style="color:#111111;font-weight:700">${esc(uid)}</code> · Proxy: <b style="color:${a.proxy_url?'#15803d':'#333333'}">${proxyHost}</b></div>
 
-    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px">
-      <div style="font-weight:600;font-size:13px;color:#38bdf8;margin-bottom:4px">Method 1: One-Click Browser Authorization</div>
-      <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">Opens Zebu login in a new tab. Log into Zebu as <b>${esc(uid)}</b> and click <b>Authorize</b>:</div>
+    <div style="background:#ffffff;border:1.5px solid #111111;border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:700;font-size:13px;color:#111111;margin-bottom:4px">Method 1: One-Click Browser Authorization</div>
+      <div style="font-size:12px;color:#333333;margin-bottom:10px">Opens Zebu login in a new tab. Log into Zebu as <b>${esc(uid)}</b> and click <b>Authorize</b>:</div>
       <a class="btn pri" href="${startUrl}" target="_blank" style="display:inline-block;text-decoration:none;padding:8px 16px;font-weight:600;border-radius:6px">🚀 Open Zebu Authorization</a>
     </div>
 
-    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:14px">
-      <div style="font-weight:600;font-size:13px;color:#38bdf8;margin-bottom:4px">Method 2: Paste Redirect URL or Code (Fail-safe)</div>
-      <div style="font-size:12px;color:#94a3b8;margin-bottom:8px">If the page circles or doesn't redirect automatically, copy the URL from your browser address bar after logging in, paste it below, and click Connect:</div>
-      <input type="text" id="manual_code_input" placeholder="Paste full redirect URL or code here..." style="width:100%;box-sizing:border-box;padding:8px 10px;background:#1e293b;border:1px solid #475569;border-radius:6px;color:#fff;font-size:12px;margin-bottom:10px">
+    <div style="background:#ffffff;border:1.5px solid #111111;border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:700;font-size:13px;color:#111111;margin-bottom:4px">Method 2: Paste Redirect URL or Code (Fail-safe)</div>
+      <div style="font-size:12px;color:#333333;margin-bottom:8px">If the page circles or doesn't redirect automatically, copy the URL from your browser address bar after logging in, paste it below, and click Connect:</div>
+      <input type="text" id="manual_code_input" placeholder="Paste full redirect URL or code here..." style="width:100%;box-sizing:border-box;padding:8px 10px;background:#ffffff;border:1.5px solid #111111;border-radius:6px;color:#111111;font-size:12px;margin-bottom:10px">
       <button class="btn" id="btnManualConnect" onclick="submitManualCode('${a.id}')" style="font-weight:600">Connect Account</button>
     </div>
 
