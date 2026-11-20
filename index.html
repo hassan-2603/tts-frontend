@@ -312,6 +312,30 @@ function canEdit(){ return ROLE==='admin'; }
 
 // ---------- API adapter (live deployment) ----------
 let DAILY_REPORTS = [], VIOLATIONS = [];
+let HAS_OLDER_TRADES = false;
+let FULL_HISTORY_LOADED = false;
+let FULL_HISTORY_LOADING = false;
+
+async function loadFullHistoryTrades(){
+  if(!LIVE || !USER || FULL_HISTORY_LOADED || FULL_HISTORY_LOADING) return;
+  FULL_HISTORY_LOADING = true;
+  try {
+    const allTrades = await API.req('/trades');
+    if(Array.isArray(allTrades)){
+      S.trades = allTrades;
+      FULL_HISTORY_LOADED = true;
+      HAS_OLDER_TRADES = false;
+      saveLiveCache();
+      invalidate();
+      render();
+    }
+  } catch(e){
+    console.warn('Full history load notice:', e);
+  } finally {
+    FULL_HISTORY_LOADING = false;
+  }
+}
+
 const API = {
   async req(path, opt={}){
     const r = await fetch('/api'+path, {cache:'no-store', ...opt, headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(opt.headers||{})}});
@@ -321,19 +345,28 @@ const API = {
   },
   async syncAll(){
     let traders, accounts, rules, trades, groups, settings, ruleLog, status, dailyReports, violations;
+    const cutoff180 = addDays(TODAY,-180);
     try {
-      const b = await this.req('/bootstrap?from='+addDays(TODAY,-180));
+      const b = await this.req('/bootstrap?from='+cutoff180);
       traders = b.traders; accounts = b.accounts; rules = b.rules; trades = b.trades;
       groups = b.groups; settings = b.settings; ruleLog = b.ruleLog; status = b.status;
       dailyReports = b.dailyReports; violations = b.violations;
+      HAS_OLDER_TRADES = Boolean(b.has_older_trades);
     } catch(_bootErr) {
       [traders,accounts,rules,trades,groups,settings,ruleLog,status,dailyReports,violations] = await Promise.all([
-        this.req('/traders'), this.req('/accounts'), this.req('/rules'), this.req('/trades?from='+addDays(TODAY,-180)), this.req('/groups'),
+        this.req('/traders'), this.req('/accounts'), this.req('/rules'), this.req('/trades?from='+cutoff180), this.req('/groups'),
         this.req('/settings'), this.req('/rulelog'), this.req('/status'),
         this.req('/daily-reports').catch(()=>[]), this.req('/violations').catch(()=>[])]);
     }
     traders = traders || [];
     accounts = accounts || [];
+    trades = trades || [];
+    // Preserve already-loaded older historical trades (>180 days) across routine refreshes
+    if(FULL_HISTORY_LOADED && Array.isArray(S?.trades) && S.trades.length){
+      const freshIds = new Set(trades.map(t => t.id));
+      const olderKept = S.trades.filter(t => !freshIds.has(t.id) && !t.open && (t.exitDate || t.date || '') < cutoff180);
+      if(olderKept.length) trades = [...trades, ...olderKept];
+    }
     Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status||{};
     DAILY_REPORTS = Array.isArray(dailyReports) ? dailyReports : [];
     VIOLATIONS = Array.isArray(violations) ? violations : [];
@@ -1189,8 +1222,23 @@ V.report = () => {
   const closedTr = tr.filter(x => !x.open);
   const openTr = tr.filter(x => x.open);
   const closedPnl = Math.round(closedTr.reduce((s, x) => s + tradePnl(x), 0) * 100) / 100;
-  const dispTotal = m.total;
-  const dispRealised = closedPnl;
+  // Priority 2: Keep broker-reported PositionBook P&L (rpnl + urmtom) clearly distinguished from FIFO closed-trade P&L
+  const brokerAccs = range === 'today' ? tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined) : [];
+  const hasBrokerToday = brokerAccs.length > 0;
+  const brokerRpnlToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_rpnl || 0), 0) * 100) / 100 : null;
+  const brokerUrmtomToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_urmtom || 0), 0) * 100) / 100 : null;
+  const brokerTotalToday = hasBrokerToday ? Math.round((brokerRpnlToday + brokerUrmtomToday) * 100) / 100 : null;
+
+  const dispTotal = hasBrokerToday ? brokerTotalToday : m.total;
+  const dispRealised = hasBrokerToday ? brokerRpnlToday : closedPnl;
+  const fifoDiff = hasBrokerToday ? Math.round((brokerRpnlToday - closedPnl) * 100) / 100 : 0;
+  const totalSub = hasBrokerToday
+    ? `Broker (MTM ${inrS(brokerUrmtomToday)}) · ${m.n} trades`
+    : (m.n + ' trades');
+  const realisedSub = hasBrokerToday
+    ? (Math.abs(fifoDiff) >= 1 ? `Broker Realised · FIFO ${inrS(closedPnl)}` : `Broker Realised · ${closedTr.length} closed`)
+    : (closedTr.length + ' closed trades');
+
   const staleAcc = tAccounts.find(a => a.is_stale || a.link === 'Login expired' || a.link === 'REAUTH_REQUIRED');
   const lastSyncStr = tAccounts.map(a => a.last_sync_at).filter(Boolean).sort().pop() || STATUS.poll?.last || '';
   const syncTimeShort = fmtIST(lastSyncStr, true);
@@ -1198,8 +1246,8 @@ V.report = () => {
 
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <div style="font-size:12.5px;color:${tr.length ? 'var(--text)' : 'var(--muted)'}">
-        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>Realised P&L: <span class="${cls(dispRealised)}">${inr(dispRealised)}</span></b> · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
+      <div style="font-size:12.5px;color:${tr.length || hasBrokerToday ? 'var(--text)' : 'var(--muted)'}">
+        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length || hasBrokerToday ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>${hasBrokerToday?'Broker Realised':'Realised'} P&L: <span class="${cls(dispRealised)}">${inr(dispRealised)}</span></b>${hasBrokerToday && Math.abs(fifoDiff)>=1 ? ` · <span class="muted">FIFO Closed (${closedTr.length}): <b>${inr(closedPnl)}</b></span>` : ''}${hasBrokerToday ? ` · <b>Open MTM: <span class="${cls(brokerUrmtomToday)}">${inr(brokerUrmtomToday)}</span></b>` : ''} · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
         ${staleWarning}
       </div>
       <button class="btn sm pri" onclick="onTraderChange('${t.id}', true)">🔄 Fetch Live Zebu</button>
@@ -1215,8 +1263,8 @@ V.report = () => {
   accBar +
   todaySyncBar +
   `<div class="grid k7">
-    ${kpi('Total P&L', inrS(dispTotal), m.n + ' trades', cls(dispTotal))}
-    ${kpi('P&L', inrS(dispRealised), closedTr.length + ' closed trades', cls(dispRealised))}
+    ${kpi('Total P&L', inrS(dispTotal), totalSub, cls(dispTotal))}
+    ${kpi('P&L', inrS(dispRealised), realisedSub, cls(dispRealised))}
     ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
     ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
     ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
@@ -2441,13 +2489,15 @@ async function onTraderChange(targetId, forceFetch=false){
   if(LIVE){
     try {
       const t = trader(targetId);
-      const acc = account(targetId) || S.accounts.find(a => a.zebu_uid === targetId || a.trader === targetId);
-      const aid = acc ? acc.id : targetId;
       toast('Fetching live details for ' + (t?.name || targetId) + ' from Zebu...');
-      await Promise.allSettled([
-        API.syncAccount(aid, forceFetch),
-        API.accountPnl(aid)
-      ]);
+      // Priority 1 & 5: Single multi-account sync call (resolves ALL accounts of this trader concurrently; no redundant accountPnl call)
+      const syncRes = await API.syncAccount(targetId, forceFetch);
+      if(syncRes && syncRes.accounts_synced > 1){
+        const msg = syncRes.failed
+          ? `Synced ${syncRes.succeeded}/${syncRes.accounts_synced} accounts (${syncRes.failed} failed)`
+          : `Synced all ${syncRes.accounts_synced} linked accounts`;
+        toast(msg);
+      }
       await API.syncAll();
       render();
     } catch(e){
@@ -2465,6 +2515,16 @@ function bind(){
   [['cSort','sort'],['cStatus','status'],['cStyle','style'],['cHold','hold']].forEach(([id,k])=>on(id,'change',e=>{ SEL.cmp[k]=e.target.value; render(); }));
   if(VIEW === 'overview' && LIVE && USER && SEL.ovAccount && !OV_FIN_CACHE[SEL.ovAccount] && !OV_FIN_LOADING[SEL.ovAccount]){
     loadOverviewFinancialSummary(SEL.ovAccount, false);
+  }
+  // Priority 3: Automatically load full historical trades (>180 days) when viewing All, Test period, or older Custom ranges
+  if(LIVE && USER && HAS_OLDER_TRADES && !FULL_HISTORY_LOADED && !FULL_HISTORY_LOADING){
+    const cutoff180 = addDays(TODAY, -180);
+    const needsFullReport = VIEW === 'report' && (SEL.range === 'all' || SEL.range === 'test' || (SEL.range === 'custom' && SEL.from && SEL.from < cutoff180));
+    const needsFullOv = VIEW === 'overview' && (SEL.ovRange === 'all' || (SEL.ovRange === 'custom' && SEL.ovFrom && SEL.ovFrom < cutoff180));
+    const needsFullTrades = VIEW === 'trades' && (!SEL.tradeFilter.from || SEL.tradeFilter.from < cutoff180);
+    if(needsFullReport || needsFullOv || needsFullTrades){
+      loadFullHistoryTrades();
+    }
   }
 }
 window.addEventListener('hashchange', ()=>{ const h=location.hash.slice(1); if(V[h] && h!==VIEW){ VIEW=h; render(); } });
