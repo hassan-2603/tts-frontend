@@ -393,6 +393,7 @@ const API = {
   syncAccount:(aid, force=false)=>API.req('/sync?account='+encodeURIComponent(aid)+(force?'&force=1':''),{method:'POST'}),
   accountPnl:aid=>API.req('/account-pnl/'+encodeURIComponent(aid)),
   financialSummary:(aid, force=false, signal=null)=>API.req('/overview/financial-summary?account_id='+encodeURIComponent(aid)+(force?'&force=1':''), signal?{signal}:{}),
+  fundsSummary:(force=false)=>API.req('/overview/funds-summary'+(force?'?force=1':'')),
   linkAccount:(id)=>API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST',body:JSON.stringify({frontend_url:window.location.origin})}),
   saveAccountToken:(id,token)=>API.req('/accounts/'+encodeURIComponent(id)+'/token',{method:'POST',body:JSON.stringify({token})}),
   saveGroup:g=>API.req('/groups/'+encodeURIComponent(g.id),{method:'PUT',body:JSON.stringify(g)}),
@@ -862,6 +863,90 @@ function onOverviewAccountChange(aid){
   }
 }
 
+// ---------- Overview Funds Summary (Total Available Funds & Total Utilized Funds across all linked Zebu accounts) ----------
+let OV_FUNDS_CACHE = null;
+let OV_FUNDS_LOADING = false;
+
+function _fmtFundsInr(valStr){
+  if(valStr === null || valStr === undefined || valStr === '') return null;
+  const num = Number(valStr);
+  if(!isFinite(num)) return null;
+  const sign = num < 0 ? '−' : '';
+  return sign + '₹' + Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderOverviewFundsCardsHtml(){
+  const d = OV_FUNDS_CACHE;
+  const loading = OV_FUNDS_LOADING;
+  const st = d ? String(d.status || 'UNAVAILABLE').toUpperCase() : (loading ? 'LOADING' : 'UNAVAILABLE');
+  const pill = loading && !d
+    ? '<span class="pill p-test" style="font-size:11px">LOADING…</span>'
+    : st === 'LIVE' ? '<span class="pill p-live" style="font-size:11px">● LIVE</span>'
+    : st === 'PARTIAL' ? '<span class="pill p-watch" style="font-size:11px">● PARTIAL</span>'
+    : st === 'STALE' ? '<span class="pill p-watch" style="font-size:11px">● STALE</span>'
+    : '<span class="pill p-stop" style="font-size:11px">UNAVAILABLE</span>';
+
+  const makeCard = (title, subtitle, rawVal) => {
+    const formatted = _fmtFundsInr(rawVal);
+    const displayVal = formatted !== null ? formatted : (loading ? 'Loading…' : 'Data unavailable');
+    let foot = '';
+    if(loading && !d){
+      foot = 'Fetching Zebu Funds & Limits across linked accounts…';
+    } else if(st === 'UNAVAILABLE'){
+      foot = esc(d?.error || 'Data unavailable');
+    } else if(st === 'STALE'){
+      foot = `Last successfully updated: ${esc(d?.last_updated_ist || '—')} · <b style="color:#b45309">STALE / FETCH FAILED</b>`;
+    } else if(st === 'PARTIAL'){
+      foot = `${d.accounts_succeeded}/${d.accounts_linked} linked accounts · ${esc(d.last_updated_ist || '')} · <b style="color:#b45309">${esc(d.error || 'Partial fetch')}</b>`;
+    } else {
+      foot = `${d.accounts_succeeded} linked account${d.accounts_succeeded===1?'':'s'} · Last updated: ${esc(d?.last_updated_ist || '')}`;
+    }
+    return `<div class="card kpi">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="l" style="font-size:14px;font-weight:700">${title}</div>
+          <div class="h" style="margin-top:1px;font-weight:600">${subtitle}</div>
+        </div>
+        ${pill}
+      </div>
+      <div class="v" style="margin-top:10px;font-size:24px">${esc(displayVal)}</div>
+      <div class="h" style="margin-top:6px">${foot}</div>
+    </div>`;
+  };
+
+  return `<div class="grid k2" style="margin-top:12px">
+    ${makeCard('Total Available Funds', 'Across all linked Zebu accounts', d?.available_funds)}
+    ${makeCard('Total Utilized Funds', 'Across all linked Zebu accounts', d?.utilized_funds)}
+  </div>`;
+}
+
+function updateOverviewFundsCards(){
+  const host = document.getElementById('ovFundsCards');
+  if(!host || VIEW !== 'overview') return;
+  host.innerHTML = renderOverviewFundsCardsHtml();
+}
+
+async function loadOverviewFundsSummary(force=false){
+  if(!LIVE || !USER) return;
+  if(OV_FUNDS_LOADING && !force) return;
+  OV_FUNDS_LOADING = true;
+  updateOverviewFundsCards();
+  try {
+    const res = await API.fundsSummary(force);
+    OV_FUNDS_CACHE = res;
+  } catch(e){
+    const prev = OV_FUNDS_CACHE;
+    if(prev && prev.available_funds !== null && prev.available_funds !== undefined){
+      OV_FUNDS_CACHE = { ...prev, status: 'STALE', error: e.message || 'Fetch failed' };
+    } else {
+      OV_FUNDS_CACHE = { status: 'UNAVAILABLE', available_funds: null, utilized_funds: null, error: e.message || 'Data unavailable' };
+    }
+  } finally {
+    OV_FUNDS_LOADING = false;
+    updateOverviewFundsCards();
+  }
+}
+
 V.overview = () => {
   // Ensure an Overview account is selected if accounts exist
   const ovAccounts = S.accounts || [];
@@ -908,9 +993,10 @@ V.overview = () => {
       <select id="ovAccountSel" style="min-width:220px;font-weight:600">
         ${ovAccounts.length ? ovAccounts.map(a => `<option value="${esc(a.id)}" ${a.id===SEL.ovAccount?'selected':''}>${esc(a.name || a.id)} (${esc(a.zebu_uid || a.id)}) · ${esc(a.link || 'Not linked')}</option>`).join('') : '<option value="">No accounts configured</option>'}
       </select>
-      ${SEL.ovAccount ? `<button class="btn sm" onclick="loadOverviewFinancialSummary(SEL.ovAccount, true)" title="Refresh PositionBook snapshot">↻ Refresh</button>` : ''}
+      ${SEL.ovAccount ? `<button class="btn sm" onclick="loadOverviewFinancialSummary(SEL.ovAccount, true);loadOverviewFundsSummary(true)" title="Refresh PositionBook & Funds snapshot">↻ Refresh</button>` : `<button class="btn sm" onclick="loadOverviewFundsSummary(true)" title="Refresh Funds & Limits">↻ Refresh</button>`}
     </div>
     <div id="ovFinCards">${renderOverviewFinancialCardsHtml(SEL.ovAccount)}</div>
+    <div id="ovFundsCards">${renderOverviewFundsCardsHtml()}</div>
   </div>` : '';
 
   return header('Overview', rangeLabel + ' · all trades', `${LIVE?`<button class="btn" onclick="syncNow(this)" style="margin-right:6px;background:#dcfce7;border:2px solid #15803d;color:#111111;font-weight:700;box-shadow:0 3px 6px rgba(21,128,61,.22)">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')" style="margin-right:6px;background:#dcfce7;border:2px solid #15803d;color:#111111;font-weight:700;box-shadow:0 3px 6px rgba(21,128,61,.22)">Import trades</button><button class="btn" onclick="go('flags')" style="background:#dc2626;border:2px solid #991b1b;color:#ffffff;font-weight:700;box-shadow:0 3px 6px rgba(220,38,38,.25)">View red flags</button>`) +
@@ -2515,6 +2601,9 @@ function bind(){
   [['cSort','sort'],['cStatus','status'],['cStyle','style'],['cHold','hold']].forEach(([id,k])=>on(id,'change',e=>{ SEL.cmp[k]=e.target.value; render(); }));
   if(VIEW === 'overview' && LIVE && USER && SEL.ovAccount && !OV_FIN_CACHE[SEL.ovAccount] && !OV_FIN_LOADING[SEL.ovAccount]){
     loadOverviewFinancialSummary(SEL.ovAccount, false);
+  }
+  if(VIEW === 'overview' && LIVE && USER && !OV_FUNDS_CACHE && !OV_FUNDS_LOADING){
+    loadOverviewFundsSummary(false);
   }
   // Priority 3: Automatically load full historical trades (>180 days) when viewing All, Test period, or older Custom ranges
   if(LIVE && USER && HAS_OLDER_TRADES && !FULL_HISTORY_LOADED && !FULL_HISTORY_LOADING){
