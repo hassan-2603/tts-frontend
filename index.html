@@ -2472,11 +2472,12 @@ try{ const h0=location.hash.slice(1); if(V[h0]) VIEW=h0; }catch(e){}
 let WS_CLIENT = null;
 let WS_RETRY_DELAY = 2000;
 function getBackendWsUrl(){
+  const qs = TOKEN ? ('?token=' + encodeURIComponent(TOKEN)) : '';
   if(location.host.includes('vercel.app')){
-    return 'wss://tts-backend-ezm3.onrender.com/api/ws';
+    return 'wss://tts-backend-ezm3.onrender.com/api/ws' + qs;
   }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}/api/ws`;
+  return `${proto}//${location.host}/api/ws${qs}`;
 }
 
 function initDashboardWebSocket(){
