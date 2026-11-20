@@ -1215,8 +1215,8 @@ V.report = () => {
   accBar +
   todaySyncBar +
   `<div class="grid k7">
-    ${kpi('Total P&L', inrS(dispTotal), m.n + ' trades', cls(dispTotal))}
-    ${kpi('Realised P&L', inrS(dispRealised), closedTr.length + ' closed trades', cls(dispRealised))}
+    ${kpi('MTM', inrS(dispTotal), m.n + ' trades', cls(dispTotal))}
+    ${kpi('P&L', inrS(dispRealised), closedTr.length + ' closed trades', cls(dispRealised))}
     ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
     ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
     ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
