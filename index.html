@@ -359,6 +359,7 @@ const API = {
   unlinkAccount:id=>API.req('/accounts/'+encodeURIComponent(id)+'/unlink',{method:'POST'}),
   syncAccount:(aid, force=false)=>API.req('/sync?account='+encodeURIComponent(aid)+(force?'&force=1':''),{method:'POST'}),
   accountPnl:aid=>API.req('/account-pnl/'+encodeURIComponent(aid)),
+  financialSummary:(aid, force=false, signal=null)=>API.req('/overview/financial-summary?account_id='+encodeURIComponent(aid)+(force?'&force=1':''), signal?{signal}:{}),
   linkAccount:(id)=>API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST',body:JSON.stringify({frontend_url:window.location.origin})}),
   saveAccountToken:(id,token)=>API.req('/accounts/'+encodeURIComponent(id)+'/token',{method:'POST',body:JSON.stringify({token})}),
   saveGroup:g=>API.req('/groups/'+encodeURIComponent(g.id),{method:'PUT',body:JSON.stringify(g)}),
@@ -634,7 +635,7 @@ const NAV = [
   ['sec','Compare & decide'],['report','Trader report','📈'],['compare','Compare traders','⇅'],['scorecard','30-day scorecard','✓'],['groups','Account groups','▤'],
   ['sec','System'],['settings','Settings & API','⚙']
 ];
-let VIEW='overview', SEL={trader:'TR-001', range:'today', from:addDays(TODAY,-30), to:TODAY, ovRange:'week', ovFrom:addDays(TODAY,-7), ovTo:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, tradeSort:{col:null,dir:'asc'}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
+let VIEW='overview', SEL={trader:'TR-001', ovAccount:'', range:'today', from:addDays(TODAY,-30), to:TODAY, ovRange:'week', ovFrom:addDays(TODAY,-7), ovTo:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, tradeSort:{col:null,dir:'asc'}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
 let charts=[];
 function shell(inner){
   const nf = chk().flags.filter(f=>f.trade.date===TODAY).length;
@@ -686,7 +687,155 @@ function addMonthsStr(s, m){
   d.setUTCMonth(d.getUTCMonth() + m);
   return dstr(d);
 }
+// ---------- Overview Account Financial Summary (Read-Only, Authoritative Zebu PositionBook + Live WS MTM) ----------
+const OV_FIN_CACHE = {};     // isolated by account_id
+const OV_FIN_LOADING = {};   // independent per-account loading state
+let OV_FIN_ABORT = null;     // AbortController for cancelling obsolete requests on account switch
+let OV_FIN_REQ_SEQ = 0;      // monotonic sequence guard so late Account A responses never overwrite Account B
+
+function fmtInrExact(valStr){
+  if(valStr === null || valStr === undefined || valStr === '') return null;
+  const num = Number(valStr);
+  if(!isFinite(num)) return null;
+  const sign = num < 0 ? '−' : (num > 0 ? '+' : '');
+  return sign + '₹' + Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function _finStatusPill(status, isLoading){
+  if(isLoading) return '<span class="pill p-test" style="font-size:11px">LOADING…</span>';
+  const s = String(status || 'UNAVAILABLE').toUpperCase();
+  if(s === 'LIVE') return '<span class="pill p-live" style="font-size:11px">● LIVE</span>';
+  if(s === 'STALE') return '<span class="pill p-watch" style="font-size:11px">● STALE</span>';
+  if(s === 'REAUTH_REQUIRED') return '<span class="pill p-stop" style="font-size:11px">REAUTH REQUIRED</span>';
+  if(s === 'NOT_LINKED') return '<span class="pill p-low" style="font-size:11px">NOT LINKED</span>';
+  return '<span class="pill p-stop" style="font-size:11px">UNAVAILABLE</span>';
+}
+
+function renderOverviewFinancialCardsHtml(aid){
+  if(!aid){
+    return `<div class="grid k2">
+      <div class="card kpi"><div class="row" style="justify-content:space-between"><div><div class="l" style="font-size:13px">P&amp;L</div><div class="h" style="margin-top:0">Realized P&amp;L</div></div>${_finStatusPill('UNAVAILABLE', false)}</div><div class="v" style="margin-top:8px;font-size:20px;color:#666666">Select an account</div><div class="h">No broker account selected</div></div>
+      <div class="card kpi"><div class="row" style="justify-content:space-between"><div><div class="l" style="font-size:13px">MTM</div><div class="h" style="margin-top:0">Unrealized Mark-to-Market</div></div>${_finStatusPill('UNAVAILABLE', false)}</div><div class="v" style="margin-top:8px;font-size:20px;color:#666666">Select an account</div><div class="h">No broker account selected</div></div>
+    </div>`;
+  }
+  const snap = OV_FIN_CACHE[aid] || null;
+  const loading = Boolean(OV_FIN_LOADING[aid]);
+
+  const buildCard = (title, subtitle, cardData, isMtm) => {
+    const valStr = cardData ? cardData.value : null;
+    const formatted = fmtInrExact(valStr);
+    const st = cardData ? cardData.status : (snap ? snap.status : (loading ? 'LOADING' : 'UNAVAILABLE'));
+    const num = formatted !== null ? Number(valStr) : null;
+    const isStale = st === 'STALE' || st === 'REAUTH_REQUIRED';
+    const boxCls = (formatted !== null && !isStale && st === 'LIVE')
+      ? (num > 0 ? 'kpi-pos' : (num < 0 ? 'kpi-neg' : ''))
+      : '';
+    const valCls = formatted !== null ? (num > 0 ? 'pos' : (num < 0 ? 'neg' : '')) : '';
+    const displayVal = formatted !== null
+      ? formatted
+      : (loading ? 'Loading…' : 'Data unavailable');
+    const lastUpd = snap?.last_updated_ist || null;
+    const feedIst = isMtm && snap?.last_feed_ist ? snap.last_feed_ist : null;
+
+    let foot = '';
+    if(loading && !snap){
+      foot = 'Fetching verified Zebu PositionBook…';
+    } else if(isStale && lastUpd){
+      foot = `Last successfully updated: ${esc(lastUpd)} · <b style="color:#b45309">${st === 'REAUTH_REQUIRED' ? 'REAUTH REQUIRED' : 'STALE / FETCH FAILED'}</b>`;
+    } else if(st === 'UNAVAILABLE' || st === 'NOT_LINKED'){
+      foot = esc(cardData?.error || snap?.error || 'Data unavailable');
+    } else if(lastUpd){
+      foot = `Last updated: ${esc(lastUpd)}` + (isMtm && cardData?.live_feed ? (feedIst ? ` · Live feed ${esc(feedIst)}` : ' · Live WebSocket feed') : '');
+    } else {
+      foot = 'Verified via Zebu PositionBook';
+    }
+
+    return `<div class="card kpi ${boxCls}">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="l" style="font-size:14px;font-weight:700">${title}</div>
+          <div class="h" style="margin-top:1px;font-weight:600">${subtitle}</div>
+        </div>
+        ${_finStatusPill(st, loading && !snap)}
+      </div>
+      <div class="v ${valCls}" style="margin-top:10px;font-size:24px">${esc(displayVal)}</div>
+      <div class="h" style="margin-top:6px">${foot}</div>
+    </div>`;
+  };
+
+  return `<div class="grid k2">
+    ${buildCard('P&amp;L', 'Realized P&amp;L', snap?.pnl || null, false)}
+    ${buildCard('MTM', 'Unrealized Mark-to-Market', snap?.mtm || null, true)}
+  </div>`;
+}
+
+function updateOverviewFinancialCards(){
+  const host = document.getElementById('ovFinCards');
+  if(!host || VIEW !== 'overview') return;
+  host.innerHTML = renderOverviewFinancialCardsHtml(SEL.ovAccount);
+}
+
+async function loadOverviewFinancialSummary(accountId, force=false){
+  if(!LIVE || !USER || !accountId) return;
+  if(OV_FIN_ABORT){
+    try { OV_FIN_ABORT.abort(); } catch(e){}
+  }
+  const ctrl = new AbortController();
+  OV_FIN_ABORT = ctrl;
+  const seq = ++OV_FIN_REQ_SEQ;
+  OV_FIN_LOADING[accountId] = true;
+  updateOverviewFinancialCards();
+
+  try {
+    const res = await API.financialSummary(accountId, force, ctrl.signal);
+    // Discard late response if user switched to another account
+    if(seq !== OV_FIN_REQ_SEQ || SEL.ovAccount !== accountId) return;
+    OV_FIN_CACHE[accountId] = res;
+  } catch(e){
+    if(e && e.name === 'AbortError') return;
+    if(seq !== OV_FIN_REQ_SEQ || SEL.ovAccount !== accountId) return;
+    const prev = OV_FIN_CACHE[accountId];
+    if(prev && prev.last_updated_ist){
+      // Never overwrite valid cached snapshot with zero on network failure — mark STALE
+      OV_FIN_CACHE[accountId] = {
+        ...prev,
+        status: 'STALE',
+        error: e.message || 'Fetch failed',
+        pnl: prev.pnl ? { ...prev.pnl, status: prev.pnl.value !== null ? 'STALE' : 'UNAVAILABLE', error: e.message || 'Fetch failed' } : null,
+        mtm: prev.mtm ? { ...prev.mtm, status: prev.mtm.value !== null ? 'STALE' : 'UNAVAILABLE', live_feed: false, error: e.message || 'Fetch failed' } : null,
+      };
+    } else {
+      OV_FIN_CACHE[accountId] = {
+        account_id: accountId,
+        status: 'UNAVAILABLE',
+        error: e.message || 'Data unavailable',
+        pnl: { value: null, status: 'UNAVAILABLE', error: e.message || 'Data unavailable' },
+        mtm: { value: null, status: 'UNAVAILABLE', live_feed: false, error: e.message || 'Data unavailable' },
+      };
+    }
+  } finally {
+    if(seq === OV_FIN_REQ_SEQ){
+      OV_FIN_LOADING[accountId] = false;
+      updateOverviewFinancialCards();
+    }
+  }
+}
+
+function onOverviewAccountChange(aid){
+  SEL.ovAccount = aid;
+  updateOverviewFinancialCards();
+  if(LIVE && aid){
+    loadOverviewFinancialSummary(aid, false);
+  }
+}
+
 V.overview = () => {
+  // Ensure an Overview account is selected if accounts exist
+  const ovAccounts = S.accounts || [];
+  if(ovAccounts.length && (!SEL.ovAccount || !ovAccounts.some(a => a.id === SEL.ovAccount))){
+    const linkedFirst = ovAccounts.find(a => a.link === 'Linked') || ovAccounts[0];
+    SEL.ovAccount = linkedFirst.id;
+  }
   const R = SEL.ovRange || 'week';
   let from = '', to = TODAY, rangeLabel = '';
   if(R === 'today'){
@@ -717,7 +866,22 @@ V.overview = () => {
   const cnt = s => S.traders.filter(t => t.status === s).length;
   const periodTitle = R === 'today' ? 'today' : R === 'week' ? 'last week' : R === 'month' ? 'last month' : R === 'custom' ? 'custom' : 'all time';
 
+  const ovFinSection = LIVE ? `
+  <div class="card" style="margin-bottom:14px">
+    <div class="row" style="margin-bottom:12px">
+      <h3 style="margin:0">Account Financial Summary <small>Zebu PositionBook · Read-Only</small></h3>
+      <div style="flex:1"></div>
+      <label style="font-size:12px;font-weight:700;color:#111111">Account:</label>
+      <select id="ovAccountSel" style="min-width:220px;font-weight:600">
+        ${ovAccounts.length ? ovAccounts.map(a => `<option value="${esc(a.id)}" ${a.id===SEL.ovAccount?'selected':''}>${esc(a.name || a.id)} (${esc(a.zebu_uid || a.id)}) · ${esc(a.link || 'Not linked')}</option>`).join('') : '<option value="">No accounts configured</option>'}
+      </select>
+      ${SEL.ovAccount ? `<button class="btn sm" onclick="loadOverviewFinancialSummary(SEL.ovAccount, true)" title="Refresh PositionBook snapshot">↻ Refresh</button>` : ''}
+    </div>
+    <div id="ovFinCards">${renderOverviewFinancialCardsHtml(SEL.ovAccount)}</div>
+  </div>` : '';
+
   return header('Overview', rangeLabel + ' · all trades', `${LIVE?`<button class="btn" onclick="syncNow(this)" style="margin-right:6px;background:#dcfce7;border:2px solid #15803d;color:#111111;font-weight:700;box-shadow:0 3px 6px rgba(21,128,61,.22)">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')" style="margin-right:6px;background:#dcfce7;border:2px solid #15803d;color:#111111;font-weight:700;box-shadow:0 3px 6px rgba(21,128,61,.22)">Import trades</button><button class="btn" onclick="go('flags')" style="background:#dc2626;border:2px solid #991b1b;color:#ffffff;font-weight:700;box-shadow:0 3px 6px rgba(220,38,38,.25)">View red flags</button>`) +
+  ovFinSection +
   `<div class="card" style="margin-bottom:14px"><div class="row">
     <div class="tabs">${[['today','Today'],['week','Last week'],['month','Last month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${R===k?'on':''}" onclick="SEL.ovRange='${k}';render()">${l}</button>`).join('')}</div>
     ${R==='custom'?`<input type="date" id="ovFrom" value="${SEL.ovFrom}"><input type="date" id="ovTo" value="${SEL.ovTo}"><button class="btn sm" onclick="SEL.ovFrom=$('#ovFrom').value;SEL.ovTo=$('#ovTo').value;render()">Go</button>`:''}
@@ -2293,11 +2457,15 @@ async function onTraderChange(targetId, forceFetch=false){
 }
 function bind(){
   const on=(id,ev,fn)=>{ const e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
+  on('ovAccountSel','change',e=>{ onOverviewAccountChange(e.target.value); });
   on('selTr','change',e=>{ onTraderChange(e.target.value); });
   on('ffTr','change',e=>{ SEL.flagFilter.trader=e.target.value; render(); });
   on('ffLv','change',e=>{ SEL.flagFilter.level=e.target.value; render(); });
   on('gSel','change',e=>{ SEL.group=e.target.value; render(); });
   [['cSort','sort'],['cStatus','status'],['cStyle','style'],['cHold','hold']].forEach(([id,k])=>on(id,'change',e=>{ SEL.cmp[k]=e.target.value; render(); }));
+  if(VIEW === 'overview' && LIVE && USER && SEL.ovAccount && !OV_FIN_CACHE[SEL.ovAccount] && !OV_FIN_LOADING[SEL.ovAccount]){
+    loadOverviewFinancialSummary(SEL.ovAccount, false);
+  }
 }
 window.addEventListener('hashchange', ()=>{ const h=location.hash.slice(1); if(V[h] && h!==VIEW){ VIEW=h; render(); } });
 try{ const h0=location.hash.slice(1); if(V[h0]) VIEW=h0; }catch(e){}
@@ -2323,7 +2491,28 @@ function initDashboardWebSocket(){
     WS_CLIENT.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if(msg.type === 'state_updated'){
+        if(msg.type === 'financial_summary_updated' && msg.account_id){
+          const prev = OV_FIN_CACHE[msg.account_id];
+          if(prev){
+            OV_FIN_CACHE[msg.account_id] = {
+              ...prev,
+              status: msg.mtm?.status || prev.status,
+              last_feed_at: msg.mtm?.last_feed_at || prev.last_feed_at,
+              last_feed_ist: msg.mtm?.last_feed_ist || prev.last_feed_ist,
+              ws_status: 'REAL-TIME',
+              mtm: prev.mtm ? {
+                ...prev.mtm,
+                value: msg.mtm?.value !== undefined ? msg.mtm.value : prev.mtm.value,
+                status: msg.mtm?.status || prev.mtm.status,
+                live_feed: true,
+                error: null,
+              } : msg.mtm,
+            };
+            if(msg.account_id === SEL.ovAccount && VIEW === 'overview'){
+              updateOverviewFinancialCards();
+            }
+          }
+        } else if(msg.type === 'state_updated'){
           refreshLive();
         } else if(msg.type === 'trades_updated'){
           const now = Date.now();
