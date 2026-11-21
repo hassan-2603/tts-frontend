@@ -50,10 +50,10 @@ aside{background:var(--card);border:1px solid rgba(148,163,184,0.14);border-radi
 .brand b{display:block;font-size:15.5px;color:var(--tx);line-height:1.25;white-space:nowrap;font-weight:800;letter-spacing:-.3px}
 .brand small{display:block;color:var(--mut);font-size:12px;font-weight:500;margin-top:2px;white-space:nowrap}
 .nav{flex:1}
-.nav a{position:relative;display:flex;align-items:center;gap:11px;width:100%;height:42px;padding:0 14px;border-radius:14px;background:transparent;color:#4b5563;text-decoration:none;font-family:var(--font);font-weight:600;font-size:14.5px;margin-bottom:4px;border:none;transition:background .15s ease,color .15s ease}
-.nav a:hover{background:#f4f6fa;color:var(--tx);text-decoration:none}
-.nav a.on{background:var(--bl);color:var(--b);font-weight:700}
-.nav a.on:hover{background:#e0eaff;color:var(--b)}
+.nav a{position:relative;display:flex;align-items:center;gap:11px;width:100%;height:42px;padding:0 14px;border-radius:14px;background:#f4f7fb;color:#4b5563;text-decoration:none;font-family:var(--font);font-weight:600;font-size:14.5px;margin-bottom:5px;border:1px solid rgba(148,163,184,0.14);transition:background .15s ease,color .15s ease,border-color .15s ease}
+.nav a:hover{background:#ebf1fa;border-color:rgba(26,86,219,0.18);color:var(--tx);text-decoration:none}
+.nav a.on{background:linear-gradient(90deg, rgba(26,86,219,0.16) 0%, rgba(26,86,219,0.07) 55%, rgba(26,86,219,0.01) 100%);border:1px solid rgba(26,86,219,0.22);color:var(--b);font-weight:700}
+.nav a.on:hover{background:linear-gradient(90deg, rgba(26,86,219,0.20) 0%, rgba(26,86,219,0.09) 55%, rgba(26,86,219,0.02) 100%);color:var(--b)}
 .nav .sec{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:700;margin:16px 10px 6px;font-family:var(--font)}
 .nav .ct{margin-left:auto;background:var(--r);color:#ffffff;font-size:11.5px;border-radius:999px;padding:2px 8px;font-weight:700}
 .side-foot{margin-top:auto;padding-top:14px;border-top:1px solid rgba(148,163,184,0.14);font-size:12.5px;color:var(--mut);font-family:var(--font)}
@@ -83,6 +83,13 @@ main > .grid.c21, main > .grid.k2{grid-template-columns:1fr;gap:16px}
 .card.kpi:hover,.card .card:hover,.card .card.kpi:hover{border:none !important;box-shadow:none !important;transform:none}
 .card .card{background:transparent !important;border:none !important;border-radius:0 !important;box-shadow:none !important;padding:8px 6px !important}
 .card.kpi.kpi-pos,.card.kpi.kpi-neg{background:transparent !important;border:none !important;box-shadow:none !important}
+.card.kpi.kpi-fade{border:1px solid rgba(148,163,184,0.20) !important;border-radius:14px !important;padding:12px 16px !important;background:linear-gradient(90deg, rgba(148,163,184,0.06) 0%, rgba(255,255,255,0) 65%) !important}
+.card.kpi.kpi-fade:hover{border:1px solid rgba(148,163,184,0.28) !important}
+.card.kpi.kpi-fade-pos{border:1px solid rgba(15,157,88,0.22) !important;border-radius:14px !important;padding:12px 16px !important;background:linear-gradient(90deg, rgba(15,157,88,0.13) 0%, rgba(15,157,88,0.05) 38%, rgba(255,255,255,0) 68%) !important}
+.card.kpi.kpi-fade-pos:hover{border:1px solid rgba(15,157,88,0.32) !important}
+.card.kpi.kpi-fade-neg{border:1px solid rgba(217,48,37,0.22) !important;border-radius:14px !important;padding:12px 16px !important;background:linear-gradient(90deg, rgba(217,48,37,0.13) 0%, rgba(217,48,37,0.05) 38%, rgba(255,255,255,0) 68%) !important}
+.card.kpi.kpi-fade-neg:hover{border:1px solid rgba(217,48,37,0.32) !important}
+.card.kpi.kpi-fade-rule{border-radius:14px !important;padding:12px 16px !important}
 .card h3{margin:0 0 14px;font-size:16.5px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--tx);letter-spacing:-.2px}
 .card h3 small{color:var(--mut);font-weight:400;font-size:13px}
 .kpi .l{color:var(--mut);font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
@@ -103,6 +110,10 @@ td.n,th.n{text-align:right;font-family:var(--mono)}
 .btn.pri:hover{background:#1e293b}
 .btn.danger{background:var(--rl);border-color:transparent;color:var(--r)}
 .btn.danger:hover{background:#fcdad7}
+.btn.btn-soft-red{background:var(--rl);border:1px solid rgba(217,48,37,0.18);color:var(--r);transition:background .15s ease,border-color .15s ease,transform .15s ease}
+.btn.btn-soft-red:hover{background:#fadbd7;border-color:rgba(217,48,37,0.34);transform:translateY(-1px)}
+.btn.btn-soft-green{background:var(--gl);border:1px solid rgba(15,157,88,0.18);color:var(--g);transition:background .15s ease,border-color .15s ease,transform .15s ease}
+.btn.btn-soft-green:hover{background:#d4efe0;border-color:rgba(15,157,88,0.34);transform:translateY(-1px)}
 .btn.sm{padding:5px 11px;font-size:12.5px;border-radius:10px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn-connect{background:var(--g) !important;border-color:var(--g) !important;color:#ffffff !important;font-weight:600}
@@ -1007,13 +1018,29 @@ function traderSelect(id, val, all){
   return `<select id="${id}">${all?`<option value="">All accounts / traders</option>`:''}${list.map(t=>`<option value="${t.id}" ${t.id===val?'selected':''}>${esc(t.name)} · ${t.id}</option>`).join('')}</select>`;
 }
 function kpi(l,v,h='',c=''){
-  const boxCls = c==='pos' ? ' kpi-pos' : (c==='neg' ? ' kpi-neg' : '');
+  const low = String(l || '').toLowerCase();
+  const isFlagKpi = low.includes('red flag') || low.includes('with a flag') || low.includes('flags in view');
+  const isRuleFollow = low.includes('rule-follow');
+  let fadeCls = ' kpi-fade';
   let extraStyle = '';
-  if(String(l).toLowerCase() === 'accuracy'){
+  if(isRuleFollow){
+    const p = Math.max(0, Math.min(100, parseFloat(String(v)) || 0));
+    const rgb = p >= 80 ? '15,157,88' : (p >= 50 ? '217,119,6' : '217,48,37');
+    const mid = Math.max(8, Math.round(p * 0.72));
+    const end = Math.min(100, Math.max(16, Math.round(p) + 8));
+    fadeCls = ' kpi-fade-rule';
+    extraStyle = ` style="border:1px solid rgba(${rgb},0.24) !important;background:linear-gradient(90deg, rgba(${rgb},0.15) 0%, rgba(${rgb},0.06) ${mid}%, rgba(255,255,255,0) ${end}%) !important"`;
+  } else if(isFlagKpi || c === 'neg'){
+    fadeCls = ' kpi-fade-neg';
+  } else if(c === 'pos'){
+    fadeCls = ' kpi-fade-pos';
+  }
+  const boxCls = (c==='pos' ? ' kpi-pos' : (c==='neg' ? ' kpi-neg' : '')) + fadeCls;
+  if(low === 'accuracy'){
     const p = Math.max(0, Math.min(100, parseFloat(String(v)) || 0));
     if(p > 0){
-      const alpha = (0.18 + (p / 100) * 0.34).toFixed(2);
-      extraStyle = ` style="background:linear-gradient(90deg, rgba(34,197,94,${alpha}) ${p}%, #f4f8fc ${p}%);border-color:#15803d"`;
+      const alpha = (0.14 + (p / 100) * 0.22).toFixed(2);
+      extraStyle = ` style="background:linear-gradient(90deg, rgba(15,157,88,${alpha}) 0%, rgba(15,157,88,0.04) ${Math.round(p*0.8)}%, rgba(255,255,255,0) ${p}%) !important;border:1px solid rgba(15,157,88,0.24) !important"`;
     }
   }
   return `<div class="card kpi${boxCls}"${extraStyle}><div class="l">${l}</div><div class="v ${c}">${v}</div>${h?`<div class="h">${h}</div>`:''}</div>`;
@@ -1053,7 +1080,7 @@ function _finStatusPill(status, isLoading){
 function renderOverviewFinancialCardsHtml(aid){
   if(!aid){
     return `
-      <div class="card kpi" style="padding:9px 12px;display:flex;flex-direction:column;justify-content:space-between">
+      <div class="card kpi kpi-fade" style="display:flex;flex-direction:column;justify-content:space-between">
         <div class="row" style="justify-content:space-between;align-items:flex-start">
           <div class="l" style="font-size:10.5px;font-weight:700">📊 REALIZED P&amp;L</div>
           ${_finStatusPill('UNAVAILABLE', false)}
@@ -1061,7 +1088,7 @@ function renderOverviewFinancialCardsHtml(aid){
         <div class="v" style="margin-top:3px;font-size:17px;color:var(--muted)">Select account</div>
         <div class="h" style="margin-top:5px;padding-top:4px;border-top:1px solid var(--line-subtle);font-size:9.5px">No broker account selected</div>
       </div>
-      <div class="card kpi" style="padding:9px 12px;display:flex;flex-direction:column;justify-content:space-between">
+      <div class="card kpi kpi-fade" style="display:flex;flex-direction:column;justify-content:space-between">
         <div class="row" style="justify-content:space-between;align-items:flex-start">
           <div class="l" style="font-size:10.5px;font-weight:700">⚡ UNREALIZED MTM</div>
           ${_finStatusPill('UNAVAILABLE', false)}
@@ -1081,7 +1108,7 @@ function renderOverviewFinancialCardsHtml(aid){
     const isStale = st === 'STALE' || st === 'REAUTH_REQUIRED';
     const isPos = formatted !== null && !isStale && num > 0;
     const isNeg = formatted !== null && !isStale && num < 0;
-    const boxCls = isPos ? 'kpi-pos' : (isNeg ? 'kpi-neg' : '');
+    const boxCls = isPos ? 'kpi-pos kpi-fade-pos' : (isNeg ? 'kpi-neg kpi-fade-neg' : 'kpi-fade');
     const valCls = isPos ? 'pos' : (isNeg ? 'neg' : '');
     const displayVal = formatted !== null
       ? formatted
@@ -1104,7 +1131,7 @@ function renderOverviewFinancialCardsHtml(aid){
 
     const icon = isMtm ? '⚡' : '📊';
 
-    return `<div class="card kpi ${boxCls}" style="padding:9px 12px;display:flex;flex-direction:column;justify-content:space-between">
+    return `<div class="card kpi ${boxCls}" style="display:flex;flex-direction:column;justify-content:space-between">
       <div>
         <div class="row" style="justify-content:space-between;align-items:flex-start">
           <div class="l" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--mut);letter-spacing:0.03em">
@@ -1224,7 +1251,7 @@ function renderOverviewFundsCardsHtml(){
     } else {
       foot = `${d.accounts_succeeded} linked · ${esc(d?.last_updated_ist || '')}`;
     }
-    return `<div class="card kpi" style="padding:9px 12px;display:flex;flex-direction:column;justify-content:space-between">
+    return `<div class="card kpi kpi-fade" style="display:flex;flex-direction:column;justify-content:space-between">
       <div>
         <div class="row" style="justify-content:space-between;align-items:flex-start">
           <div class="l" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--mut);letter-spacing:0.03em">
@@ -1309,7 +1336,7 @@ V.overview = () => {
     </div>
   </div>` : '';
 
-  return header('Overview', 'Today · ' + fmtDate(TODAY) + ' · all traders', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
+  return header('Overview', 'Today · ' + fmtDate(TODAY) + ' · all traders', `${LIVE?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn btn-soft-green" onclick="go('trades')">Import trades</button><button class="btn btn-soft-red" onclick="go('flags')">View red flags</button>`) +
   ovFinSection +
   `<div class="card" style="margin-bottom:16px">
     <div class="grid k3" style="gap:16px;margin-bottom:16px">
@@ -1350,7 +1377,7 @@ function flagTable(list, showDate=true){
 V.traders = () => {
   const selTrCount = SELECTED_TRADER_IDS.size;
   const selAccCount = SELECTED_ACCOUNT_IDS.size;
-  return header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn danger sm" id="btnDelTraders" style="display:${selTrCount?'inline-block':'none'};margin-right:6px" onclick="deleteSelectedTraders()">Delete selected traders (<span id="selTradersCount">${selTrCount}</span>)</button><button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
+  return header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn danger sm" id="btnDelTraders" style="display:${selTrCount?'inline-block':'none'};margin-right:6px" onclick="deleteSelectedTraders()">Delete selected traders (<span id="selTradersCount">${selTrCount}</span>)</button><button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
   `<div class="card"><div class="tbl-wrap"><table><tr>${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTraders" onchange="toggleSelectAllTraders(this.checked)" title="Select all traders"></th>`:''}<th>Trader / ID</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th>Status</th><th style="text-align:right"></th></tr>
   ${S.traders.map(t=>{ 
     const acc=S.accounts.filter(a=>a.trader===t.id); 
@@ -1524,7 +1551,7 @@ V.trades = () => {
   const sortBtn = col => ` <button type="button" class="btn sm" style="padding:1px 5px;font-size:10px;line-height:1.1;margin-left:3px;vertical-align:middle" onclick="toggleTradeSort('${col}')" title="${arrowTitle}">${arrowChar}</button>`;
   const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+netTradePnl(t),0);
   const selCount = SELECTED_TRADE_IDS.size;
-  return header('Trade log','Closed trades — exact broker execution records', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
+  return header('Trade log','Closed trades — exact broker execution records', `${LIVE?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn btn-soft-green" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
   `<div class="card" style="margin-bottom:14px"><div class="row">${traderSelect('tfTr',F.trader,true)}
     <select id="tfFlag"><option value="">All trades</option><option value="flag" ${F.flag==='flag'?'selected':''}>With red flag</option><option value="ok" ${F.flag==='ok'?'selected':''}>Clean (OK)</option></select>
     <input type="date" id="tfFrom" value="${F.from}"> → <input type="date" id="tfTo" value="${F.to}">
