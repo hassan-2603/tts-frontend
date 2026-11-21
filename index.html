@@ -1090,9 +1090,6 @@ V.overview = () => {
     ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
     ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
   </div>
-  <div class="card" style="margin-top:14px"><h3>The journey of one trader</h3>
-    <div class="flow">${[['Add trader','Profile, accounts, style','traders'],['Write rules','His system saved as rules','rules'],['30-day test','Small capital, we record all','trades'],['Report card','Numbers + red flags','scorecard'],['Big capital','Only if passed — keep tracking','compare']]
-      .map((s,i)=>`<div class="st" style="cursor:pointer" onclick="go('${s[2]}')"><span class="no">${i+1}</span> <b>${s[0]}</b><span>${s[1]}</span></div>`).join('')}</div></div>
   <div class="grid c21" style="margin-top:14px">
     <div class="card"><h3>Latest red flags <small>most recent first</small></h3>${flagTable(flags.slice(0,7))}</div>
     <div class="card"><h3>30-day test progress</h3>
@@ -1230,25 +1227,11 @@ function toggleTradeSort(col){
   render();
 }
 function tradeExpiryLabel(t){
-  if(t.expiry){
-    return fmtDate(t.expiry);
-  }
-  const s = String(t.tsym || '').toUpperCase();
-  if(s){
-    // Noren format: BANKNIFTY26NOV26C51700 (DDMMMYY)
-    const m1 = s.match(/(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{2})/);
-    if(m1){
-      const mon = m1[2][0] + m1[2].slice(1).toLowerCase();
-      return `${m1[1]} ${mon} 20${m1[3]}`;
-    }
-    // NSE monthly format: BANKNIFTY26NOV51700CE (YYMMM)
-    const m2 = s.match(/(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)/);
-    if(m2){
-      const mon = m2[2][0] + m2[2].slice(1).toLowerCase();
-      return `${mon} 20${m2[1]}`;
-    }
-  }
-  return t.expiryType || '';
+  const raw = String(t && t.expiry || '').trim();
+  if(!raw) return 'N/A';
+  const d = new Date(raw.slice(0, 10) + 'T00:00:00Z');
+  if(isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 V.trades = () => {
   const F=SEL.tradeFilter, {byTrade}=chk();
@@ -1278,7 +1261,7 @@ V.trades = () => {
     <div style="flex:1"></div><span class="muted">${list.length} closed trades · Net <b class="${cls(tot)}">${inrS(tot)}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
   <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr>
     ${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTrades" onchange="toggleSelectAllTrades(this.checked)" title="Select all shown"></th>`:''}
-    <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L${sortBtn('netPnl')}</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points${sortBtn('points')}</th><th class="n">Realized P&L${sortBtn('realizedPnl')}</th><th>Check</th>
+    <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L${sortBtn('netPnl')}</th><th>Instrument Name</th><th>Expiry Date</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points${sortBtn('points')}</th><th class="n">Realized P&L${sortBtn('realizedPnl')}</th><th>Check</th>
     ${canEdit()?`<th></th>`:''}
   </tr>
   ${shown.map(t=>{
@@ -1289,7 +1272,8 @@ V.trades = () => {
     <td class="mono">${fmtDate(t.exitDate||t.date)} ${esc(t.exitTime||'')}</td>
     <td>${esc(account(t.account)?.name||t.account)}</td>
     <td class="n ${cls(np)}">${inr(np)}</td>
-    <td>${esc(t.symbol)} ${t.strike||''} ${esc(t.opt||'')}${expLbl?` <span class="muted mono" style="font-size:11px">(${esc(expLbl)})</span>`:''}</td>
+    <td>${esc(t.symbol)} ${t.strike||''} ${esc(t.opt||'')}</td>
+    <td class="mono">${esc(expLbl)}</td>
     <td>${esc(t.side)}</td>
     <td class="n">${t.lots}</td>
     <td class="n">${Number(t.entry||0).toFixed(2)}</td>
@@ -1650,7 +1634,7 @@ function openCalendarDay(dateStr){
     <div class="card" style="margin-top:14px">
       <h3>Trades on ${fmtDate(dateStr)} <small>${sortedTrades.length} trade${sortedTrades.length===1?'':'s'}</small></h3>
       ${sortedTrades.length ? `<div class="tbl-wrap" style="max-height:420px"><table><tr>
-        <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L${sortBtn('netPnl')}</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points${sortBtn('points')}</th><th class="n">Realized P&L${sortBtn('realizedPnl')}</th><th>Check</th>
+        <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L${sortBtn('netPnl')}</th><th>Instrument Name</th><th>Expiry Date</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points${sortBtn('points')}</th><th class="n">Realized P&L${sortBtn('realizedPnl')}</th><th>Check</th>
       </tr>
       ${sortedTrades.map(x=>{
         const f = byTrade[x.id] || [];
@@ -1660,7 +1644,8 @@ function openCalendarDay(dateStr){
           <td class="mono">${fmtDate(x.exitDate||x.date)} ${esc(x.exitTime||'')}</td>
           <td>${esc(account(x.account)?.name||x.account)}</td>
           <td class="n ${cls(np)}">${inr(np)}</td>
-          <td>${esc(x.symbol)} ${x.strike||''} ${esc(x.opt||'')}${expLbl?` <span class="muted mono" style="font-size:11px">(${esc(expLbl)})</span>`:''}</td>
+          <td>${esc(x.symbol)} ${x.strike||''} ${esc(x.opt||'')}</td>
+          <td class="mono">${esc(expLbl)}</td>
           <td>${esc(x.side)}</td>
           <td class="n">${x.lots}</td>
           <td class="n">${Number(x.entry||0).toFixed(2)}</td>
@@ -1984,7 +1969,7 @@ function openTrade(id){
   const pnlVal = hasPnl ? inr(tradePnl(t)) : 'Pending LTP';
   const unevalHtml = u.length ? u.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #d1d5db"><span class="pill p-watch">MISSING DATA</span> <b>${esc(x.rule)}</b> — ${esc(x.reason)}</div>`).join('') : '';
   modal(`<h2>Trade ${t.id} · ${esc(trader(t.trader)?.name || t.account)} ${f.length?'<span class="pill p-high">🚩 '+f.length+' red flag(s)</span>':u.length?'<span class="pill p-watch">Partial rule check (missing broker data)</span>':'<span class="pill p-pass">All rules followed</span>'}</h2>
-  <div class="grid k4">${kpi('Instrument',t.symbol+' '+(t.strike||'')+' '+(t.opt||''),mLabel(m.d)+' · spot '+(t.spot?Math.round(t.spot):'n/a'))}${kpi('Entry → exit',t.entry+' → '+(t.open?'OPEN @ '+(t.exit??'—'):t.exit),t.date+' '+t.time+' → '+(t.exitDate||t.date)+' '+(t.exitTime||'OPEN'))}${kpi('Lots',t.lots+' × '+t.lotSize,t.side+' · '+t.product+' · '+t.source)}${kpi(t.open?'Open P&L (LTP)':'Realized P&L',pnlVal,'charges '+(t.chargesEstimated?'≈ ':'')+inr(t.charges)+(t.tsym?' · '+esc(t.tsym):''),hasPnl?cls(tradePnl(t)):'muted')}</div>
+  <div class="grid k4">${kpi('Instrument',t.symbol+' '+(t.strike||'')+' '+(t.opt||''),'Expiry: '+tradeExpiryLabel(t)+' · '+mLabel(m.d)+' · spot '+(t.spot?Math.round(t.spot):'n/a'))}${kpi('Entry → exit',t.entry+' → '+(t.open?'OPEN @ '+(t.exit??'—'):t.exit),t.date+' '+t.time+' → '+(t.exitDate||t.date)+' '+(t.exitTime||'OPEN'))}${kpi('Lots',t.lots+' × '+t.lotSize,t.side+' · '+t.product+' · '+t.source)}${kpi(t.open?'Open P&L (LTP)':'Realized P&L',pnlVal,'charges '+(t.chargesEstimated?'≈ ':'')+inr(t.charges)+(t.tsym?' · '+esc(t.tsym):''),hasPnl?cls(tradePnl(t)):'muted')}</div>
   <div class="card" style="margin-top:14px"><h3>Rule check (${esc(t.account)})</h3>${f.length? f.map(x=>`<div style="padding:8px 0;border-bottom:1px solid #d1d5db">${levelPill(x.level)} <b>${esc(x.rule)}</b> — ${esc(x.did)} <span class="muted" style="font-size:11px">[${esc(x.status||'ACTIVE')}]</span></div>`).join('') : '<span class="pos">✓ No rule violations detected on available data.</span>'}${unevalHtml}
    <div class="muted" style="font-size:12px;margin-top:8px">Expected strike by rule: <b>${expectedStrike(t,r,S.settings.strikeStep)} ${t.opt||''}</b> (${r.strikeMode==='ATM'?'ATM':r.strikeDist+' '+r.strikeMode})</div></div>
   <div class="row" style="margin-top:14px;justify-content:flex-end">${canEdit()&&!(LIVE&&t.origin==='zebu')?`<button class="btn danger" onclick="delTrade('${t.id}')">Delete</button><button class="btn" onclick="editTrade('${t.id}')">Edit</button>`:''}${LIVE&&t.origin==='zebu'?`<span class="muted" style="font-size:12px;margin-right:auto">From Zebu trade book · ${t.is_finalized?'Finalized':'Live'} · charges estimated</span>`:''}<button class="btn pri" onclick="closeModal()">Close</button></div>`);
