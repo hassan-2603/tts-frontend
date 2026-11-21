@@ -437,6 +437,8 @@ const API = {
   financialSummary:(aid, force=false, signal=null)=>API.req('/overview/financial-summary?account_id='+encodeURIComponent(aid)+(force?'&force=1':''), signal?{signal}:{}),
   fundsSummary:(force=false)=>API.req('/overview/funds-summary'+(force?'?force=1':'')),
   linkAccount:(id)=>API.req('/accounts/'+encodeURIComponent(id)+'/link',{method:'POST',body:JSON.stringify({frontend_url:window.location.origin})}),
+  saveZebuConfig:(id,payload)=>API.req('/accounts/'+encodeURIComponent(id)+'/zebu-config',{method:'POST',body:JSON.stringify(payload)}),
+  connectZebu:(id,payload={})=>API.req('/accounts/'+encodeURIComponent(id)+'/zebu-connect',{method:'POST',body:JSON.stringify(payload)}),
   saveAccountToken:(id,token)=>API.req('/accounts/'+encodeURIComponent(id)+'/token',{method:'POST',body:JSON.stringify({token})}),
   saveGroup:g=>API.req('/groups/'+encodeURIComponent(g.id),{method:'PUT',body:JSON.stringify(g)}),
   deleteGroup:id=>API.req('/groups/'+encodeURIComponent(id),{method:'DELETE'}),
@@ -1823,7 +1825,7 @@ V.settings = () => {
   const conn = LIVE ? `<div class="card"><h3>Zebu connection <span class="pill ${STATUS.zebu_configured?'p-live':'p-stop'}">${STATUS.zebu_configured?'API keys set':'API keys missing'}</span></h3>
     <table class="checklist"><tr><td class="muted">Last sync</td><td class="mono">${esc(P.last||'never')} ${P.reason?'· '+esc(P.reason):''}</td></tr>
       <tr><td class="muted">Auto sync</td><td class="mono">every ${STATUS.poll_seconds||'—'}s · ${esc(STATUS.market||'')}</td></tr>
-      <tr><td class="muted">Redirect URL for Zebu app</td><td class="mono" style="white-space:normal;word-break:break-all">${esc(STATUS.redirect_url||'')}</td></tr></table>
+      <tr><td class="muted">Authentication</td><td class="mono">Zebu QuickAuth (Automatic Server Session)</td></tr></table>
     <h3 style="margin-top:14px">Accounts</h3><table><tr><th>Account</th><th>Zebu UID</th><th>Link</th><th>Last result</th></tr>
       ${S.accounts.filter(a=>a.broker==='Zebu').map(a=>`<tr><td>${esc(a.name)}</td><td class="mono">${esc(a.zebu_uid||'—')}</td><td>${linkPill(a)}</td><td class="muted" style="white-space:normal;font-size:12px">${esc((P.results||{})[a.id]||'—')}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">No Zebu accounts yet — add them in Trader profiles → Broker accounts.</td></tr>'}</table>
     ${canEdit()?`<div class="row" style="margin-top:12px"><button class="btn pri" onclick="syncNow(this)">Sync from Zebu now</button><button class="btn" onclick="testAlert()">Send test alert</button></div>`:''}
@@ -2294,9 +2296,9 @@ function saveTrader(id){
   save(); liveCall(()=>API.saveTrader(t)); closeModal(); render(); toast('Trader saved');
 }
 function editAccount(id){
-  const a=id?account(id):{id:'AC-'+String(S.accounts.length+1).padStart(2,'0'),name:'Account '+(S.accounts.length+1),broker:LIVE?'Zebu':'Angel One',trader:S.traders[0]?.id,zebu_uid:'',zebu_actid:'',zebu_secret_key:'',proxy_url:''};
+  const a=id?account(id):{id:'AC-'+String(S.accounts.length+1).padStart(2,'0'),name:'Account '+(S.accounts.length+1),broker:LIVE?'Zebu':'Angel One',trader:S.traders[0]?.id,zebu_uid:'',zebu_actid:'',zebu_vc:''};
   const statusHtml = id && LIVE && a.broker === 'Zebu' ? `
-    <div style="background:#ffffff;border:1px solid #d8e1ea;border-radius:8px;padding:12px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div style="background:#ffffff;border:1px solid #d8e1ea;border-radius:10px;padding:12px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:12px;color:#333333">Broker Connection Status:</div>
         <div style="margin-top:4px">${linkPill(a)}</div>
@@ -2304,9 +2306,9 @@ function editAccount(id){
       <div>
         ${a.link === 'Linked' ? `
           <button class="btn sm btn-disconnect" type="button" onclick="unlinkAccount('${a.id}')">Disconnect</button>
-          <button class="btn sm btn-relink" type="button" onclick="openLinkModal('${a.id}')" style="margin-left:6px">Re-link</button>
+          <button class="btn sm btn-relink" type="button" onclick="openLinkModal('${a.id}')" style="margin-left:6px">Zebu Config</button>
         ` : `
-          <button class="btn sm btn-connect" type="button" onclick="openLinkModal('${a.id}')">🔐 Connect Zebu</button>
+          <button class="btn sm btn-connect" type="button" onclick="openLinkModal('${a.id}')">Configure &amp; Connect Zebu</button>
         `}
       </div>
     </div>
@@ -2316,16 +2318,9 @@ function editAccount(id){
     <label class="f">Name<input id="a_name" value="${esc(a.name)}"></label>
     <label class="f">Broker<select id="a_broker">${['Zebu','Angel One','Zerodha','Dhan','Fyers','Upstox','Other'].map(b=>`<option ${a.broker===b?'selected':''}>${b}</option>`).join('')}</select></label>
     <label class="f">Trader${traderSelect('a_trader',a.trader)}</label>
-    <label class="f">Zebu Client ID (uid)<input id="a_zuid" value="${esc(a.zebu_uid||'')}" placeholder="e.g. 47000S19 or Z58805"></label>
-    <label class="f">Zebu API Secret Key<input id="a_zsecret" type="password" value="${esc(a.zebu_secret_key||'')}" placeholder="API Secret from Zebu settings (optional)"></label>
-    <label class="f">Static Proxy URL (optional)
-      <div style="display:flex;gap:6px">
-        <input id="a_proxy" value="${esc(a.proxy_url||'')}" placeholder="e.g. http://user:pass@79.127.168.43:port" style="flex:1">
-        <button class="btn sm" type="button" id="btnCheckProxyIp" onclick="checkOutboundIp()">🔍 Check IP</button>
-      </div>
-      <div id="proxy_ip_result" style="font-size:11.5px;margin-top:4px;color:#333333"></div>
-    </label>
-    <label class="f">Zebu Account ID (actid)<input id="a_zact" value="${esc(a.zebu_actid||'')}" placeholder="usually same as uid"></label>
+    <label class="f">Zebu User ID (UID)<input id="a_zuid" value="${esc(a.zebu_uid||'')}" placeholder="e.g. 47000S19"></label>
+    <label class="f">Vendor Code (VC)<input id="a_zvc" value="${esc(a.zebu_vc||'')}" placeholder="e.g. 47000S19_U"></label>
+    <label class="f">Zebu Account ID (actid)<input id="a_zact" value="${esc(a.zebu_actid||'')}" placeholder="usually same as UID"></label>
   </div>
   ${statusHtml}
   <div class="row" style="margin-top:16px;justify-content:flex-end">
@@ -2359,6 +2354,7 @@ async function checkOutboundIp(){
   }
 }
 function saveAccount(id){
+  const existing = id ? account(id) : null;
   const a = {
     id: id || val('a_id'),
     name: val('a_name'),
@@ -2366,8 +2362,8 @@ function saveAccount(id){
     trader: val('a_trader'),
     zebu_uid: (val('a_zuid') || '').trim().toUpperCase(),
     zebu_client_id: (val('a_zuid') || '').trim(),
-    zebu_secret_key: (val('a_zsecret') || '').trim(),
-    proxy_url: (val('a_proxy') || '').trim(),
+    zebu_vc: (val('a_zvc') || existing?.zebu_vc || '').trim(),
+    proxy_url: existing?.proxy_url || '',
     zebu_actid: (val('a_zact') || val('a_zuid') || '').trim().toUpperCase(),
   };
   const o = id ? account(id) : null;
@@ -2432,30 +2428,107 @@ function linkZebu(id){
 function openLinkModal(id){
   const a = account(id);
   if(!a){ toast('Account not found'); return; }
-  const uid = a.zebu_client_id || a.zebu_uid || a.id;
-  const startUrl = getZebuStartUrl(a.id);
-  const proxyHost = a.proxy_url ? esc((a.proxy_url.split('@').pop() || a.proxy_url).replace(/^(https?|socks5):\/\//i, '').split('/')[0]) + ' (Dedicated Proxy)' : 'Direct IP';
+  const isLinked = a.link === 'Linked';
+  const hasSecret = Boolean(a.has_zebu_secret_key || a.has_secret_key);
+  const hasFactor2 = Boolean(a.has_zebu_factor2);
+  const hasPassword = Boolean(a.has_zebu_password);
   modal(`
-    <div style="font-weight:700;font-size:16px;margin-bottom:6px">🔗 Connect ${esc(a.name)} to Zebu</div>
-    <div class="muted" style="font-size:12px;margin-bottom:14px">Client ID: <code style="color:#111111;font-weight:700">${esc(uid)}</code> · Proxy: <b style="color:${a.proxy_url?'#15803d':'#333333'}">${proxyHost}</b></div>
-
-    <div style="background:#ffffff;border:1px solid #d8e1ea;border-radius:8px;padding:14px;margin-bottom:14px">
-      <div style="font-weight:700;font-size:13px;color:#111111;margin-bottom:4px">Method 1: One-Click Browser Authorization</div>
-      <div style="font-size:12px;color:#333333;margin-bottom:10px">Opens Zebu login in a new tab. Log into Zebu as <b>${esc(uid)}</b> and click <b>Authorize</b>:</div>
-      <a class="btn pri" href="${startUrl}" target="_blank" style="display:inline-block;text-decoration:none;padding:8px 16px;font-weight:600;border-radius:6px">🚀 Open Zebu Authorization</a>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+      <div style="font-weight:700;font-size:17px">Zebu Configuration — ${esc(a.name)}</div>
+      <div>${linkPill(a)}</div>
+    </div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:16px">
+      Enter your Zebu credentials once, save configuration, and click <b>Connect &amp; Sync</b>. Sessions are managed and renewed automatically on the server.
     </div>
 
-    <div style="background:#ffffff;border:1px solid #d8e1ea;border-radius:8px;padding:14px;margin-bottom:14px">
-      <div style="font-weight:700;font-size:13px;color:#111111;margin-bottom:4px">Method 2: Paste Redirect URL or Code (Fail-safe)</div>
-      <div style="font-size:12px;color:#333333;margin-bottom:8px">If the page circles or doesn't redirect automatically, copy the URL from your browser address bar after logging in, paste it below, and click Connect:</div>
-      <input type="text" id="manual_code_input" placeholder="Paste full redirect URL or code here..." style="width:100%;box-sizing:border-box;padding:8px 10px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;color:#111111;font-size:12px;margin-bottom:10px">
-      <button class="btn" id="btnManualConnect" onclick="submitManualCode('${a.id}')" style="font-weight:600">Connect Account</button>
+    <div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+      <label class="f">Zebu User ID (UID)
+        <input id="zq_uid" value="${esc(a.zebu_uid || '')}" placeholder="e.g. 47000S19" autocomplete="off">
+      </label>
+      <label class="f">Vendor Code (VC)
+        <input id="zq_vc" value="${esc(a.zebu_vc || '')}" placeholder="e.g. 47000S19_U" autocomplete="off">
+      </label>
+      <label class="f">Two Factor (PAN or DOB)
+        <input id="zq_factor2" type="password" value="" placeholder="${hasFactor2 ? 'Saved — leave blank to keep existing' : 'PAN (ABCDE1234F) or DOB (DD-MM-YYYY)'}" autocomplete="off">
+      </label>
+      <label class="f">Secret App Key
+        <input id="zq_secret" type="password" value="" placeholder="${hasSecret ? 'Saved — leave blank to keep existing' : 'Enter Zebu API Secret Key'}" autocomplete="off">
+      </label>
+      <label class="f" style="grid-column:1 / -1">Password
+        <input id="zq_password" type="password" value="" placeholder="${hasPassword ? 'Leave blank to keep existing password' : 'Enter Zebu login password'}" autocomplete="new-password">
+        <span class="muted" style="font-size:11.5px;margin-top:3px">Leave blank to keep existing password. Credentials are encrypted server-side and never sent back to the browser.</span>
+      </label>
     </div>
 
-    <div class="row" style="justify-content:flex-end">
-      <button class="btn" onclick="closeModal()">Close</button>
+    <div id="zq_msg" style="margin-top:12px;font-size:12.5px"></div>
+
+    <div class="row" style="margin-top:16px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        ${isLinked ? `<button class="btn sm btn-disconnect" type="button" onclick="unlinkAccount('${a.id}')">Disconnect</button>` : ''}
+      </div>
+      <div class="row" style="gap:8px">
+        <button class="btn" type="button" onclick="closeModal()">Close</button>
+        <button class="btn" type="button" id="btnZebuSaveCfg" onclick="saveZebuConfigForm('${a.id}')">Save Zebu Configuration</button>
+        <button class="btn pri" type="button" id="btnZebuConnectSync" onclick="connectAndSyncZebuForm('${a.id}')">Connect &amp; Sync</button>
+      </div>
     </div>
   `);
+}
+
+function _readZebuConfigForm(){
+  return {
+    zebu_uid: (val('zq_uid') || '').trim().toUpperCase(),
+    zebu_vc: (val('zq_vc') || '').trim(),
+    zebu_factor2: (val('zq_factor2') || '').trim(),
+    zebu_secret_key: (val('zq_secret') || '').trim(),
+    zebu_password: val('zq_password') || '',
+  };
+}
+
+async function saveZebuConfigForm(aid){
+  const payload = _readZebuConfigForm();
+  const msgEl = document.getElementById('zq_msg');
+  const btn = document.getElementById('btnZebuSaveCfg');
+  if(!payload.zebu_uid || !payload.zebu_vc){
+    if(msgEl) msgEl.innerHTML = '<span class="neg">Please enter both Zebu User ID (UID) and Vendor Code (VC).</span>';
+    return;
+  }
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+  if(msgEl) msgEl.innerHTML = '<span class="muted">Saving encrypted configuration…</span>';
+  try {
+    await API.saveZebuConfig(aid, payload);
+    if(LIVE) await API.syncAll();
+    if(msgEl) msgEl.innerHTML = '<span class="pos">✓ Zebu configuration saved. Click <b>Connect &amp; Sync</b> to connect.</span>';
+    toast('Zebu configuration saved');
+    render();
+  } catch(e){
+    if(msgEl) msgEl.innerHTML = `<span class="neg">✕ ${esc(e.message)}</span>`;
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = 'Save Zebu Configuration'; }
+  }
+}
+
+async function connectAndSyncZebuForm(aid){
+  const payload = _readZebuConfigForm();
+  const msgEl = document.getElementById('zq_msg');
+  const btn = document.getElementById('btnZebuConnectSync');
+  const saveBtn = document.getElementById('btnZebuSaveCfg');
+  if(btn){ btn.disabled = true; btn.textContent = 'Connecting & Syncing…'; }
+  if(saveBtn) saveBtn.disabled = true;
+  if(msgEl) msgEl.innerHTML = '<span class="muted">Authenticating via Zebu QuickAuth and syncing trades, positions, and funds…</span>';
+  try {
+    const res = await API.connectZebu(aid, payload);
+    delete OV_FIN_CACHE[aid];
+    OV_FUNDS_CACHE = null;
+    if(LIVE) await API.syncAll();
+    closeModal();
+    render();
+    toast(`Connected & synced${res.cliname ? ' (' + res.cliname + ')' : ''}`);
+  } catch(e){
+    if(msgEl) msgEl.innerHTML = `<span class="neg">✕ ${esc(e.message)}</span>`;
+    if(btn){ btn.disabled = false; btn.textContent = 'Connect & Sync'; }
+    if(saveBtn) saveBtn.disabled = false;
+  }
 }
 
 function copyLink(url){
