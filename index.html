@@ -10,131 +10,120 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
-  --bg:#f8fafc; --panel:#ffffff; --panel2:#f1f5f9; --line:#e2e8f0; --line-subtle:#f1f5f9;
-  --text:#0f172a; --text-muted:#64748b; --text-dim:#94a3b8;
-  --accent:#2563eb; --accent-hover:#1d4ed8;
-  --green:#15803d; --green-bg:#f0fdf4; --green-border:#bbf7d0;
-  --red:#dc2626; --red-bg:#fef2f2; --red-border:#fecaca;
-  --amber:#b45309; --amber-bg:#fffbeb; --amber-border:#fde68a;
-  --sidebar-bg:#0f172a; --sidebar-surface:#1e293b; --sidebar-line:#334155; --sidebar-text:#f8fafc; --sidebar-muted:#94a3b8;
-  --radius:10px; --radius-sm:6px; --radius-lg:14px;
-  --shadow-sm:0 1px 2px 0 rgba(15,23,42,0.05);
-  --shadow:0 1px 3px 0 rgba(15,23,42,0.08), 0 1px 2px -1px rgba(15,23,42,0.08);
-  --shadow-md:0 4px 6px -1px rgba(15,23,42,0.07), 0 2px 4px -2px rgba(15,23,42,0.07);
-  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --bg:#e6ecf1; --panel:#ffffff; --panel2:#f0f4f8; --line:#222222; --line-subtle:#e2e8f0;
+  --text:#111111; --muted:#4b5563;
+  --accent:#111111;
+  --green:#15803d; --green-bg:#dcfce7; --green-border:#15803d;
+  --red:#dc2626; --red-bg:#fee2e2; --red-border:#dc2626;
+  --amber:#b45309; --amber-bg:#fef3c7; --amber-border:#b45309;
+  --radius:9px; --mono:'JetBrains Mono',ui-monospace,monospace;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;-webkit-font-smoothing:antialiased}
-a{color:var(--accent);text-decoration:none}
-a:hover{text-decoration:underline}
-.app{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh;background:var(--bg)}
-aside{background:var(--sidebar-bg);border-right:1px solid var(--sidebar-line);padding:20px 14px;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column}
-.brand{display:flex;gap:10px;align-items:center;width:100%;padding:10px 12px;margin-bottom:18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);transition:all .15s ease}
-.brand:hover{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.14)}
-.logo{width:32px;height:32px;flex-shrink:0;border-radius:8px;background:linear-gradient(135deg, #2563eb, #1d4ed8);border:1px solid rgba(255,255,255,0.15);display:grid;place-items:center;font-weight:700;font-size:12px;color:#ffffff;box-shadow:0 2px 6px rgba(37,99,235,0.4)}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+a{color:#111111}
+.app{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh;background:var(--bg)}
+aside{background:#edf1f6;border-right:2px solid #222222;padding:18px 12px;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column}
+.brand{display:flex;gap:9px;align-items:center;width:100%;padding:10px 10px;margin-bottom:16px;background:radial-gradient(ellipse at 50% 45%, #ffffff 50%, #f1f4f8 100%);border:2px solid #222222;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);transition:transform .2s ease,box-shadow .2s ease}
+.brand:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,0.16)}
+.logo{width:32px;height:32px;flex-shrink:0;border-radius:7px;background:#111111;border:1.5px solid #222222;display:grid;place-items:center;font-weight:700;font-size:13px;color:#ffffff;box-shadow:0 2px 5px rgba(0,0,0,0.2)}
 .brand > div{min-width:0}
-.brand b{display:block;font-size:13.5px;color:#ffffff;line-height:1.25;white-space:nowrap;letter-spacing:-0.01em}
-.brand small{display:block;color:var(--sidebar-muted);font-size:11px;font-weight:500;margin-top:2px;white-space:nowrap}
+.brand b{display:block;font-size:13.5px;color:#111111;line-height:1.25;white-space:nowrap;font-weight:700}
+.brand small{display:block;color:#4b5563;font-size:10.5px;font-weight:600;margin-top:2px;white-space:nowrap;letter-spacing:-0.01em}
 .nav{flex:1}
-.nav a{display:flex;align-items:center;gap:10px;width:100%;height:38px;padding:0 12px;border-radius:8px;background:transparent;color:var(--sidebar-muted);text-decoration:none;font-weight:500;font-size:13.5px;margin-bottom:4px;border:1px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all .15s ease}
-.nav a:hover{background:rgba(255,255,255,0.06);color:#ffffff;text-decoration:none}
-.nav a.on{background:var(--accent);color:#ffffff;font-weight:600;border-color:#3b82f6;box-shadow:0 2px 8px rgba(37,99,235,0.35)}
-.nav a.on:hover{background:var(--accent-hover)}
-.nav .sec{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;font-weight:700;margin:18px 10px 6px}
-.nav .ct{margin-left:auto;background:#ef4444;color:#ffffff;font-size:11px;border-radius:999px;padding:1px 7px;font-weight:700}
-.side-foot{margin-top:auto;padding-top:16px;border-top:1px solid var(--sidebar-line);font-size:12px;color:var(--sidebar-muted)}
-main{padding:24px 32px 64px;min-width:0;background:var(--bg)}
-.top{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-.top h1{font-size:24px;margin:0;color:var(--text);font-weight:700;letter-spacing:-0.02em}
-.top .sub{color:var(--text-muted);font-size:13px;margin-top:2px}
+.nav a{position:relative;display:flex;align-items:center;gap:10px;width:100%;height:39px;padding:0 12px;border-radius:8px;background:radial-gradient(ellipse at 50% 45%, #ffffff 50%, #f4f7fb 100%);color:#111111;text-decoration:none;font-weight:600;font-size:13px;margin-bottom:7px;border:1.5px solid #222222;box-shadow:0 3px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:transform .2s cubic-bezier(0.34, 1.56, 0.64, 1),box-shadow .2s ease,background .15s ease,border-color .15s ease}
+.nav a:hover{transform:translateY(-2px) scale(1.02);background:radial-gradient(ellipse at 50% 40%, #ffffff 40%, #e2e8f0 100%);border-color:#000000;box-shadow:0 8px 18px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,1);color:#000000;text-decoration:none;z-index:2}
+.nav a.on{background:radial-gradient(ellipse at 50% 40%, #374151 40%, #111827 100%);color:#ffffff;font-weight:700;border:1.5px solid #000000;box-shadow:0 4px 12px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)}
+.nav a.on:hover{transform:translateY(-2px) scale(1.02);background:radial-gradient(ellipse at 50% 40%, #4b5563 40%, #1f2937 100%);box-shadow:0 8px 20px rgba(0,0,0,0.38);color:#ffffff}
+.nav .sec{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#4b5563;font-weight:700;margin:16px 10px 6px}
+.nav .ct{margin-left:auto;background:#dc2626;color:#ffffff;font-size:11px;border-radius:999px;padding:1px 7px;font-weight:700;border:1px solid #991b1b}
+.side-foot{margin-top:auto;padding-top:14px;border-top:1.5px solid #222222;font-size:11.5px;color:#374151}
+.side-foot a{color:#111111;font-weight:700;text-decoration:underline}
+main{padding:22px 28px 60px;min-width:0;background:var(--bg)}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+.top h1{font-size:22px;margin:0;color:#111111;font-weight:700}
+.top .sub{color:#4b5563;font-size:13px;margin-top:2px}
 .top .sp{flex:1}
-.pill{display:inline-flex;align-items:center;gap:5px;padding:2.5px 8.5px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;letter-spacing:0.02em;border:1px solid transparent}
-.pill-linked{background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;display:inline-flex;align-items:center;gap:5px;padding:2.5px 8.5px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
-.pill-disconnected{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;display:inline-flex;align-items:center;gap:5px;padding:2.5px 8.5px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
-.p-test{background:#f1f5f9;color:#475569;border-color:#cbd5e1}.p-live{background:#ecfdf5;color:#059669;border-color:#a7f3d0}.p-watch{background:#fffbeb;color:#d97706;border-color:#fde68a}.p-stop{background:#fef2f2;color:#dc2626;border-color:#fecaca}
-.p-high{background:#fef2f2;color:#dc2626;border-color:#fecaca}.p-med{background:#fffbeb;color:#d97706;border-color:#fde68a}.p-low{background:#f1f5f9;color:#475569;border-color:#cbd5e1}
-.p-pass{background:#ecfdf5;color:#059669;border-color:#a7f3d0}.p-fail{background:#fef2f2;color:#dc2626;border-color:#fecaca}
+.header-curve-divider{width:100%;height:18px;margin:2px 0 18px 0;overflow:hidden}
+.header-curve-divider svg{width:100%;height:100%;display:block}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap;border:1.5px solid #222222}
+.pill-linked{background:#dcfce7;color:#15803d;border:1.5px solid #15803d;display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.pill-disconnected{background:#fee2e2;color:#dc2626;border:1.5px solid #dc2626;display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.p-test{background:#ffffff;color:#111111;border:1.5px solid #222222}.p-live{background:#dcfce7;color:#15803d;border:1.5px solid #15803d}.p-watch{background:#fef3c7;color:#92400e;border:1.5px solid #b45309}.p-stop{background:#fee2e2;color:#dc2626;border:1.5px solid #dc2626}
+.p-high{background:#fee2e2;color:#dc2626;border:1.5px solid #dc2626}.p-med{background:#fef3c7;color:#92400e;border:1.5px solid #b45309}.p-low{background:#ffffff;color:#111111;border:1.5px solid #222222}
+.p-pass{background:#dcfce7;color:#15803d;border:1.5px solid #15803d}.p-fail{background:#fee2e2;color:#dc2626;border:1.5px solid #dc2626}
 .grid{display:grid;gap:14px}
 .k7{grid-template-columns:repeat(7,1fr)}.k6{grid-template-columns:repeat(6,1fr)}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.k2{grid-template-columns:1fr 1fr}
 .c21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;color:var(--text);box-shadow:var(--shadow-sm);transition:box-shadow .2s ease,border-color .2s ease}
-.card:hover{box-shadow:var(--shadow)}
-.card.kpi{background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow-sm);padding:16px 18px}
-.card.kpi.kpi-pos{background:linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%) !important;border-color:#86efac !important}
-.card.kpi.kpi-neg{background:linear-gradient(180deg, #ffffff 0%, #fef2f2 100%) !important;border-color:#fca5a5 !important}
-.card h3{margin:0 0 12px;font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--text);letter-spacing:-0.01em}
-.card h3 small{color:var(--text-muted);font-weight:400;font-size:12.5px}
-.kpi .l{color:var(--text-muted);font-size:12px;font-weight:600;letter-spacing:0.02em;text-transform:uppercase}
-.kpi .v{font-size:24px;font-weight:700;font-family:var(--mono);margin-top:4px;color:var(--text);letter-spacing:-0.02em}
-.kpi .v.pos{color:var(--green)}
-.kpi .v.neg{color:var(--red)}
-.kpi .h{color:var(--text-muted);font-size:11.5px;margin-top:4px}
-.pos{color:var(--green) !important;font-weight:700}.neg{color:var(--red) !important;font-weight:700}.amb{color:var(--amber) !important;font-weight:600}
-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--panel);color:var(--text)}
-th{text-align:left;color:var(--text-muted);font-weight:600;font-size:11.5px;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap;background:#f8fafc;letter-spacing:0.04em;text-transform:uppercase}
-td{padding:12px 14px;white-space:nowrap;border-bottom:1px solid var(--line-subtle);vertical-align:middle;color:var(--text);font-size:13px}
-tr.click{cursor:pointer}tr.click:hover td{background:#f8fafc}
+.card{background:radial-gradient(ellipse at 50% 45%, #ffffff 50%, #f6f8fb 100%);border:2px solid #222222;border-radius:var(--radius);padding:16px 18px;color:#111111;box-shadow:0 6px 18px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.95);transition:transform .2s cubic-bezier(0.34, 1.56, 0.64, 1),box-shadow .2s ease,border-color .2s ease}
+.card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,1);border-color:#000000}
+.card.kpi{background:radial-gradient(ellipse at 50% 45%, #ffffff 50%, #f6f8fb 100%);border:2px solid #222222;box-shadow:0 6px 18px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.95)}
+.card.kpi.kpi-pos{background:radial-gradient(ellipse at 50% 45%, #dcfce7 45%, #bbf7d0 100%) !important;border-color:#15803d !important}
+.card.kpi.kpi-neg{background:radial-gradient(ellipse at 50% 45%, #fee2e2 45%, #fca5a5 100%) !important;border-color:#dc2626 !important}
+.card h3{margin:0 0 12px;font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px;color:#111111}
+.card h3 small{color:#4b5563;font-weight:400;font-size:12px}
+.kpi .l{color:#4b5563;font-size:12px;font-weight:700}
+.kpi .v{font-size:23px;font-weight:700;font-family:var(--mono);margin-top:4px;color:#111111}
+.kpi .v.pos{color:#15803d}
+.kpi .v.neg{color:#dc2626}
+.kpi .h{color:#4b5563;font-size:11.5px;margin-top:3px}
+.pos{color:#15803d !important;font-weight:700}.neg{color:#dc2626 !important;font-weight:700}.amb{color:#b45309 !important;font-weight:600}
+table{width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;color:#111111}
+th{text-align:left;color:#111111;font-weight:700;font-size:12px;padding:9px 12px;border-bottom:2px solid #222222;white-space:nowrap;background:#f1f4f8}
+td{padding:10px 12px;white-space:nowrap;border-bottom:1px solid #d1d5db;vertical-align:middle;color:#111111}
+tr.click{cursor:pointer}tr.click:hover td{background:#f3f6fa}
 td.n,th.n{text-align:right;font-family:var(--mono)}
-.tbl-wrap{overflow:auto;max-height:560px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
-.btn{background:#ffffff;color:var(--text);border:1px solid #cbd5e1;border-radius:8px;padding:7px 14px;font:inherit;font-weight:600;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;box-shadow:var(--shadow-sm);transition:all .15s ease}
-.btn:hover{background:#f8fafc;border-color:#94a3b8;box-shadow:var(--shadow);text-decoration:none}
-.btn.pri{background:#0f172a;border-color:#0f172a;color:#ffffff}
-.btn.pri:hover{background:#1e293b;border-color:#1e293b}
-.btn.danger{background:#ffffff;border-color:#fecaca;color:var(--red)}
-.btn.danger:hover{background:#fef2f2;border-color:var(--red)}
-.btn.sm{padding:5px 10px;font-size:12px;border-radius:6px}
+.tbl-wrap{overflow:auto;max-height:560px;background:#ffffff;border:2px solid #222222;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.08)}
+.btn{background:radial-gradient(ellipse at 50% 45%, #ffffff 50%, #f4f6f9 100%);color:#111111;border:2px solid #222222;border-radius:8px;padding:7px 14px;font:inherit;font-weight:600;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;box-shadow:0 3px 8px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.95);transition:transform .15s ease,box-shadow .15s ease,background .15s ease}
+.btn:hover{transform:translateY(-1px);background:radial-gradient(ellipse at 50% 45%, #ffffff 40%, #e8edf3 100%);box-shadow:0 5px 12px rgba(0,0,0,0.16);border-color:#000000;text-decoration:none}
+.btn.pri{background:radial-gradient(ellipse at 50% 45%, #2d3748 40%, #111827 100%);border-color:#111111;color:#ffffff;box-shadow:0 3px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2)}
+.btn.pri:hover{background:radial-gradient(ellipse at 50% 45%, #374151 40%, #1f2937 100%);box-shadow:0 6px 14px rgba(0,0,0,0.35);transform:translateY(-1px)}
+.btn.danger{background:radial-gradient(ellipse at 50% 45%, #fee2e2 40%, #fecaca 100%);border-color:#dc2626;color:#991b1b}
+.btn.danger:hover{background:radial-gradient(ellipse at 50% 45%, #fecaca 40%, #fca5a5 100%);transform:translateY(-1px)}
+.btn.sm{padding:4px 10px;font-size:12px;border-radius:6px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn-connect{background:#15803d !important;border-color:#15803d !important;color:#ffffff !important;font-weight:600}
 .btn-connect:hover{background:#166534 !important}
-.btn-disconnect{background:#ffffff !important;border-color:#fecaca !important;color:#dc2626 !important;font-weight:600}
-.btn-disconnect:hover{background:#fef2f2 !important;border-color:#dc2626 !important}
-.btn-relink{background:#ffffff !important;border-color:#cbd5e1 !important;color:#0f172a !important;font-weight:600}
-.btn-relink:hover{background:#f8fafc !important;border-color:#94a3b8 !important}
-input,select,textarea{background:#ffffff;border:1px solid #cbd5e1;color:var(--text);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;transition:all .15s ease}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,0.15)}
-label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text);font-weight:600}
-label.f input,label.f select{color:var(--text);font-size:13.5px;min-width:0;width:100%;font-weight:400}
+.btn-disconnect{background:#ffffff !important;border-color:#dc2626 !important;color:#dc2626 !important;font-weight:600}
+.btn-disconnect:hover{background:#fee2e2 !important}
+.btn-relink{background:#ffffff !important;border-color:#222222 !important;color:#111111 !important;font-weight:600}
+.btn-relink:hover{background:#f1f4f8 !important}
+input,select,textarea{background:#ffffff;border:1.5px solid #222222;color:#111111;border-radius:8px;padding:7px 10px;font:inherit;font-size:13.5px}
+input:focus,select:focus,textarea:focus{outline:2px solid #222222}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:#111111;font-weight:700}
+label.f input,label.f select{color:#111111;font-size:13.5px;min-width:0;width:100%;font-weight:400}
 .form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.muted{color:var(--text-muted)}.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}.mono{font-family:var(--mono)}
 .flow{display:flex;gap:12px;align-items:stretch}
-.flow .st{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow-sm);transition:all .15s ease}
-.flow .st:hover{border-color:var(--accent);box-shadow:var(--shadow);transform:translateY(-1px)}
-.flow .st b{display:block;font-size:13.5px;color:var(--text);margin-top:4px}.flow .st span{font-size:12px;color:var(--text-muted)}
-.flow .st .no{font-family:var(--mono);color:var(--accent);font-weight:700;font-size:13px;background:rgba(37,99,235,0.08);padding:2px 7px;border-radius:4px;display:inline-block}
-.flagtxt{font-size:12.5px;white-space:normal;min-width:220px;color:var(--text)}
-.chip{display:inline-block;background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:11.5px;margin:2px 3px 2px 0;color:var(--text)}
-.chip.bad{border-color:#fecaca;color:#dc2626;background:#fef2f2}
-.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.6);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.flow .st{flex:1;background:radial-gradient(ellipse at 50% 45%, #ffffff 50%, #f6f8fb 100%);border:2px solid #222222;border-radius:9px;padding:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.9);transition:transform .2s ease,box-shadow .2s ease}
+.flow .st:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(0,0,0,0.16)}
+.flow .st b{display:block;font-size:13px;color:#111111;margin-top:3px}.flow .st span{font-size:12px;color:#4b5563}
+.flow .st .no{font-family:var(--mono);color:#111111;font-weight:700;font-size:13px;background:#e5ebf1;padding:2px 7px;border-radius:4px;display:inline-block;border:1px solid #222222}
+.flagtxt{font-size:12.5px;white-space:normal;min-width:220px;color:#111111}
+.chip{display:inline-block;background:#ffffff;border:1.5px solid #222222;border-radius:6px;padding:2px 8px;font-size:11.5px;margin:2px 3px 2px 0;color:#111111;box-shadow:0 1px 3px rgba(0,0,0,0.06)}
+.chip.bad{border-color:#dc2626;color:#dc2626;background:#fee2e2}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal-bg.on{display:flex}
-.modal{background:#ffffff;border:1px solid var(--line);border-radius:var(--radius-lg);width:min(840px,100%);max-height:90vh;overflow:auto;padding:24px;color:var(--text);box-shadow:0 20px 25px -5px rgba(0,0,0,0.1),0 8px 10px -6px rgba(0,0,0,0.1)}
-.modal h2{margin:0 0 16px;font-size:18px;color:var(--text);font-weight:700}
-.toast{position:fixed;bottom:24px;right:24px;background:#0f172a;color:#ffffff;border:1px solid #1e293b;padding:12px 18px;border-radius:10px;z-index:60;display:none;font-weight:600;font-size:13px;box-shadow:0 10px 15px -3px rgba(0,0,0,0.2)}
+.modal{background:#ffffff;border:2.5px solid #222222;border-radius:12px;width:min(840px,100%);max-height:90vh;overflow:auto;padding:22px;color:#111111;box-shadow:0 16px 36px rgba(0,0,0,0.25)}
+.modal h2{margin:0 0 14px;font-size:18px;color:#111111;font-weight:700}
+.toast{position:fixed;bottom:22px;right:22px;background:#111111;color:#ffffff;border:2px solid #222222;padding:11px 16px;border-radius:8px;z-index:60;display:none;font-weight:600;font-size:13px;box-shadow:0 8px 20px rgba(0,0,0,0.25)}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .cal div{aspect-ratio:1.6;border-radius:5px;font-size:10.5px;display:flex;flex-direction:column;justify-content:center;align-items:center;font-family:var(--mono)}
-.cal .hd{aspect-ratio:auto;color:var(--text);font-weight:700;font-family:Inter}
-.bar{height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;border-radius:999px}
-.tabs{display:inline-flex;gap:2px;background:#f1f5f9;border:1px solid var(--line);border-radius:8px;padding:3px}
-.tabs button{background:transparent;border:0;color:var(--text-muted);padding:5px 12px;border-radius:6px;font:inherit;font-size:12px;cursor:pointer;font-weight:600;transition:all .15s ease}
-.tabs button:hover{color:var(--text)}
-.tabs button.on{background:#ffffff;color:var(--text);font-weight:700;box-shadow:0 1px 2px rgba(15,23,42,0.08)}
-.note{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:14px;color:var(--text);font-size:12.5px}
-pre.code{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:12px;font:12px/1.5 var(--mono);overflow:auto;color:var(--text);max-height:340px}
+.cal .hd{aspect-ratio:auto;color:#111111;font-weight:700;font-family:Inter}
+.bar{height:7px;background:#d1d5db;border:1.5px solid #222222;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%}
+.tabs{display:inline-flex;gap:3px;background:#ffffff;border:2px solid #222222;border-radius:9px;padding:3px;box-shadow:0 3px 6px rgba(0,0,0,0.08)}
+.tabs button{background:transparent;border:0;color:#374151;padding:5px 12px;border-radius:6px;font:inherit;font-size:12.5px;cursor:pointer;font-weight:600;transition:all .15s ease}
+.tabs button:hover{color:#000000}
+.tabs button.on{background:#1f2937;color:#ffffff;font-weight:700;box-shadow:0 2px 5px rgba(0,0,0,0.2)}
+.note{background:#ffffff;border:2px dashed #222222;border-radius:9px;padding:12px;color:#111111;font-size:12.5px}
+pre.code{background:#ffffff;border:2px solid #222222;border-radius:8px;padding:12px;font:12px/1.5 var(--mono);overflow:auto;color:#111111;max-height:340px}
 canvas{background:transparent}
 .checklist td:last-child{text-align:right}
 .login{min-height:100vh;display:grid;place-items:center;background:var(--bg)}
 .login .card{width:360px}
 
-/* Overview Redesign Layout Helpers */
-.ov-metrics-quad{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.ov-perf-risk-grid{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1.2fr);gap:16px;margin-top:16px}
-.risk-mini-card{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:12px 14px;transition:all .15s ease}
-.risk-mini-card:hover{background:#ffffff;box-shadow:var(--shadow-sm);border-color:#cbd5e1}
-
-@media (max-width:1200px){.ov-perf-risk-grid{grid-template-columns:1fr}.k7,.k6{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.c21,.k2{grid-template-columns:1fr}}
-@media (max-width:1024px){.ov-metrics-quad{grid-template-columns:1fr}}
-@media (max-width:768px){.app{grid-template-columns:1fr}aside{position:static;height:auto;padding:16px}.k7,.k4,.k3,.k6{grid-template-columns:1fr 1fr}.form{grid-template-columns:1fr}main{padding:16px}}
-@media (max-width:540px){.k7,.k4,.k3,.k6,.ov-metrics-quad{grid-template-columns:1fr}}
+@media (max-width:1100px){.k7,.k6{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.c21,.k2{grid-template-columns:1fr}.form{grid-template-columns:1fr 1fr}}
+@media (max-width:760px){.app{grid-template-columns:1fr}aside{position:static;height:auto}.k7,.k4,.k3,.k6{grid-template-columns:1fr 1fr}.form{grid-template-columns:1fr}main{padding:16px}}
 </style>
 </head>
 <body>
@@ -720,25 +709,32 @@ let charts=[];
 function shell(inner){
   const nf = chk().flags.filter(f=>f.trade.date===TODAY).length;
   return `<div class="app"><aside>
-    <div class="brand"><div class="logo">TTS</div><div><b>Trader Tracking</b><small>Institutional Surveillance</small></div></div>
+    <div class="brand"><div class="logo">TT</div><div><b>Trader Tracking</b><small>Record · Check · Decide</small></div></div>
     <nav class="nav">${NAV.map(n=> n[0]==='sec'?`<div class="sec">${n[1]}</div>`:
       `<a href="#${n[0]}" onclick="go('${n[0]}');return false" class="${VIEW===n[0]?'on':''}"><span style="width:18px;text-align:center">${n[2]}</span>${n[1]}${n[0]==='flags'&&nf?`<span class="ct">${nf}</span>`:''}</a>`).join('')}</nav>
     <div class="side-foot">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <span style="color:#f8fafc;font-weight:600">${esc(USER)}</span>
+        <span style="color:#111111;font-weight:700">${esc(USER)}</span>
         <span class="pill ${ROLE==='admin'?'p-live':'p-test'}">${ROLE}</span>
       </div>
-      <div style="font-size:11.5px;color:var(--sidebar-muted)">
-        Data: <b style="color:#f8fafc">${LIVE?'Live · Zebu Feed':'Demo Mode'}</b>${LIVE&&STATUS.poll?.last?`<br><span style="font-size:10.5px">Sync: ${esc(STATUS.poll.last.slice(11,16))} IST</span>`:''}
+      <div style="font-size:11.5px;color:#4b5563">
+        Data: <b style="color:#111111">${LIVE?'Live · Zebu':'Demo data'}</b>${LIVE&&STATUS.poll?.last?`<br><span style="font-size:10.5px">Sync: ${esc(STATUS.poll.last.slice(11,16))} IST</span>`:''}
       </div>
-      <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center">
-        <span style="color:#64748b;font-size:10.5px">Read-only ledger</span>
-        <a href="#" onclick="logout();return false" style="color:#38bdf8;font-size:11.5px;font-weight:600">Sign out</a>
+      <div style="margin-top:8px;padding-top:8px;border-top:1.5px solid #222222;display:flex;justify-content:space-between;align-items:center">
+        <span style="color:#6b7280;font-size:10.5px">Tracking only</span>
+        <a href="#" onclick="logout();return false" style="color:#111111;font-size:11.5px;font-weight:700">Sign out</a>
       </div>
     </div>
   </aside><main>${inner}</main></div>`;
 }
-function header(title, sub, right=''){ return `<div class="top"><div><h1>${title}</h1>${sub?`<div class="sub">${sub}</div>`:''}</div><div class="sp"></div>${right}</div>`; }
+function header(title, sub, right=''){
+  return `<div class="top"><div><h1>${title}</h1>${sub?`<div class="sub">${sub}</div>`:''}</div><div class="sp"></div>${right}</div>
+  <div class="header-curve-divider">
+    <svg viewBox="0 0 1200 20" preserveAspectRatio="none">
+      <path d="M0,4 Q600,20 1200,4" fill="none" stroke="#222222" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>`;
+}
 function statusPill(s){ const m={Testing:'p-test',Live:'p-live',Watch:'p-watch','On watch':'p-watch',Stopped:'p-stop'}; return `<span class="pill ${m[s]||'p-low'}">${s==='Watch'?'On watch':s}</span>`; }
 function levelPill(l){ return `<span class="pill ${l==='High'?'p-high':l==='Medium'?'p-med':'p-low'}">${l}</span>`; }
 function resultPill(r){ return `<span class="pill ${r==='Pass'?'p-pass':r==='Watch'?'p-watch':r==='Fail'?'p-fail':'p-test'}">${r}</span>`; }
@@ -1017,116 +1013,6 @@ async function loadOverviewFundsSummary(force=false){
   }
 }
 
-// ---------- Overview P&L Performance Chart ----------
-function drawOverviewChart(trades = [], range = 'week'){
-  const canvas = document.getElementById('cOvGrowth');
-  if(!canvas || !window.Chart) return;
-  if(canvas._chartInstance){
-    try { canvas._chartInstance.destroy(); } catch(e){}
-    canvas._chartInstance = null;
-  }
-
-  const T = [...trades].sort((a,b) => (a.date + a.time).localeCompare(b.date + b.time));
-  let labels = [], series = [];
-
-  if(range === 'today'){
-    if(!T.length){
-      labels = ['09:15', '10:30', '12:00', '13:30', '15:30'];
-      series = [0, 0, 0, 0, 0];
-    } else {
-      labels = ['09:15'];
-      series = [0];
-      let cum = 0;
-      T.forEach(t => {
-        cum += tradePnl(t);
-        labels.push(t.time ? t.time.slice(0,5) : '10:00');
-        series.push(cum);
-      });
-    }
-  } else {
-    const dayMap = {};
-    T.forEach(t => {
-      const d = t.exitDate || t.date;
-      if(d) dayMap[d] = (dayMap[d] || 0) + tradePnl(t);
-    });
-    const sortedDays = Object.keys(dayMap).sort();
-    if(!sortedDays.length){
-      labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-      series = [0, 0, 0, 0, 0];
-    } else {
-      let cum = 0;
-      sortedDays.forEach(d => {
-        cum += dayMap[d];
-        labels.push(fmtDate(d));
-        series.push(cum);
-      });
-    }
-  }
-
-  const lastVal = series[series.length - 1] || 0;
-  const isPositive = lastVal >= 0;
-  const strokeColor = isPositive ? '#16a34a' : '#dc2626';
-
-  const chart = new Chart(canvas, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Cumulative P&L',
-        data: series,
-        borderColor: strokeColor,
-        borderWidth: 2.2,
-        pointRadius: series.length > 25 ? 0 : 3.5,
-        pointHoverRadius: 5,
-        pointBackgroundColor: strokeColor,
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 1.5,
-        fill: {
-          target: 'origin',
-          above: 'rgba(22, 163, 74, 0.12)',
-          below: 'rgba(220, 38, 38, 0.12)'
-        },
-        tension: 0.25
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        mode: 'index',
-        intersect: false
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#0f172a',
-          titleColor: '#e2e8f0',
-          bodyColor: '#ffffff',
-          padding: 10,
-          cornerRadius: 6,
-          displayColors: false,
-          callbacks: {
-            title: c => c[0].label,
-            label: c => `Cumulative P&L: ${inr(c.parsed.y)}`
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: '#f1f5f9', drawBorder: false },
-          ticks: { color: '#64748b', font: { family: 'Inter', size: 11 }, maxTicksLimit: 8 }
-        },
-        y: {
-          grid: { color: '#f1f5f9', drawBorder: false },
-          ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 11 }, callback: v => inrS(v) }
-        }
-      }
-    }
-  });
-  canvas._chartInstance = chart;
-  charts.push(chart);
-}
-
 V.overview = () => {
   // Ensure an Overview account is selected if accounts exist
   const ovAccounts = S.accounts || [];
@@ -1134,52 +1020,27 @@ V.overview = () => {
     const linkedFirst = ovAccounts.find(a => a.link === 'Linked') || ovAccounts[0];
     SEL.ovAccount = linkedFirst.id;
   }
-  const R = SEL.ovRange || 'week';
-  let from = '', to = TODAY, rangeLabel = '';
-  if(R === 'today'){
-    from = TODAY; to = TODAY; rangeLabel = 'Today · ' + fmtDate(TODAY);
-  } else if(R === 'week'){
-    from = addDays(TODAY, -7); to = TODAY; rangeLabel = 'Last week (' + fmtDate(from) + ' → ' + fmtDate(to) + ')';
-  } else if(R === 'month'){
-    from = addMonthsStr(TODAY, -1); to = TODAY; rangeLabel = 'Last month (' + fmtDate(from) + ' → ' + fmtDate(to) + ')';
-  } else if(R === 'custom'){
-    from = SEL.ovFrom || addDays(TODAY, -7); to = SEL.ovTo || TODAY; rangeLabel = 'Custom (' + fmtDate(from) + ' → ' + fmtDate(to) + ')';
-  } else {
-    from = ''; to = ''; rangeLabel = 'All time';
-  }
-
-  const inRange = (d, isOpen=false) => {
-    if(!from && !to) return true;
-    if(isOpen && (!to || to >= TODAY)) return true;
-    return (!from || d >= from) && (!to || d <= to);
-  };
-
   const {flags} = chk();
-  const filtFlags = flags.filter(f => inRange(f.trade.exitDate || f.trade.date, f.trade.open));
-  const filtTrades = S.trades.filter(t => inRange(t.exitDate || t.date, t.open));
-  const flaggedTr = new Set(filtFlags.map(f => f.trade.trader));
-  const filtM = metrics(filtTrades);
+  const today = flags.filter(f => f.trade.date === TODAY);
+  const tToday = S.trades.filter(t => t.date === TODAY);
+  const flaggedTr = new Set(today.map(f => f.trade.trader));
   const all = metrics(S.trades);
-  const pnlPeriod = filtTrades.reduce((a, t) => a + tradePnl(t), 0);
+  const pnlToday = tToday.reduce((a, t) => a + tradePnl(t), 0);
   const cnt = s => S.traders.filter(t => t.status === s).length;
-  const periodTitle = R === 'today' ? 'today' : R === 'week' ? 'last week' : R === 'month' ? 'last month' : R === 'custom' ? 'custom' : 'all time';
-  const highFlagsCount = filtFlags.filter(f => f.level === 'High').length;
-
-  setTimeout(() => drawOverviewChart(filtTrades, R), 0);
 
   const ovFinSection = LIVE ? `
   <div class="card" style="margin-bottom:16px;padding:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
       <div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:-0.01em">Account Financial Intelligence</span>
-          <span class="pill p-low" style="font-size:11px;font-weight:600">Zebu PositionBook &amp; Limits · Live Read-Only</span>
+          <span style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:-0.01em">Account Financials</span>
+          <span class="pill p-low" style="font-size:11px;font-weight:600">Zebu PositionBook &amp; Limits</span>
         </div>
-        <div class="muted" style="font-size:12px;margin-top:2px">Real-time consolidated broker ledger, capital utilization and open exposure</div>
+        <div class="muted" style="font-size:12px;margin-top:2px">Consolidated broker ledger, capital utilization and open exposure</div>
       </div>
       <div class="row" style="gap:10px;align-items:center">
         <label style="font-size:12px;font-weight:600;color:var(--text-muted)">Broker Account:</label>
-        <select id="ovAccountSel" style="min-width:240px;font-weight:600;height:36px;font-size:12.5px">
+        <select id="ovAccountSel" onchange="onOverviewAccountChange(this.value)" style="min-width:240px;font-weight:600;height:36px;font-size:12.5px">
           ${ovAccounts.length ? ovAccounts.map(a => `<option value="${esc(a.id)}" ${a.id===SEL.ovAccount?'selected':''}>${esc(a.name || a.id)} (${esc(a.zebu_uid || a.id)}) · ${esc(a.link || 'Not linked')}</option>`).join('') : '<option value="">No accounts configured</option>'}
         </select>
         ${SEL.ovAccount ? `<button class="btn sm" onclick="loadOverviewFinancialSummary(SEL.ovAccount, true);loadOverviewFundsSummary(true)" title="Force live sync from Zebu" style="height:36px;display:inline-flex;align-items:center;gap:6px">↻ Refresh</button>` : `<button class="btn sm" onclick="loadOverviewFundsSummary(true)" title="Force refresh Funds & Limits" style="height:36px;display:inline-flex;align-items:center;gap:6px">↻ Refresh</button>`}
@@ -1191,223 +1052,30 @@ V.overview = () => {
     </div>
   </div>` : '';
 
-  return `
-  <div class="top">
-    <div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <h1 style="font-size:24px;font-weight:700;color:var(--text);letter-spacing:-0.02em;margin:0">Overview</h1>
-        <span class="pill p-live" style="font-size:11px;font-weight:700">● LIVE SURVEILLANCE</span>
-      </div>
-      <div class="sub" style="margin-top:3px;color:var(--text-muted);font-size:13px">
-        ${rangeLabel} · Institutional trader tracking, risk monitoring &amp; capital ledger
-      </div>
-    </div>
-    <div class="sp"></div>
-    <div class="row" style="gap:8px">
-      ${LIVE ? `<button class="btn" onclick="syncNow(this)" style="background:#2563eb;color:#ffffff;border-color:#2563eb;font-weight:600;display:inline-flex;align-items:center;gap:6px">🔄 Sync from Zebu</button>` : ''}
-      <button class="btn" onclick="go('trades')" style="font-weight:600;display:inline-flex;align-items:center;gap:6px">📥 Import Trades</button>
-      <button class="btn danger" onclick="go('flags')" style="font-weight:600;display:inline-flex;align-items:center;gap:6px">⚑ View Red Flags ${filtFlags.length ? `<span class="pill p-high" style="margin-left:4px;padding:1px 6px;font-size:10px">${filtFlags.length}</span>` : ''}</button>
-    </div>
-  </div>` +
+  return header('Overview', 'Today · ' + fmtDate(TODAY) + ' · all traders', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
   ovFinSection +
-  `<div class="ov-perf-risk-grid">
-    <!-- Left Column: Performance Analytics Chart -->
-    <div class="card" style="display:flex;flex-direction:column;justify-content:space-between">
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-          <div>
-            <h3 style="margin:0;font-size:15px;font-weight:700">Performance Analytics</h3>
-            <div class="muted" style="font-size:12px;margin-top:2px">Cumulative P&amp;L trajectory · ${periodTitle}</div>
-          </div>
-          <div class="row" style="gap:6px">
-            <div class="tabs">${[['today','Today'],['week','Last week'],['month','Last month'],['all','All'],['custom','Custom']].map(([k,l])=>`<button class="${R===k?'on':''}" onclick="SEL.ovRange='${k}';render()">${l}</button>`).join('')}</div>
-            ${R==='custom'?`<input type="date" id="ovFrom" value="${SEL.ovFrom}" style="height:30px;padding:2px 6px;font-size:11.5px"><input type="date" id="ovTo" value="${SEL.ovTo}" style="height:30px;padding:2px 6px;font-size:11.5px"><button class="btn sm" onclick="SEL.ovFrom=$('#ovFrom').value;SEL.ovTo=$('#ovTo').value;render()">Go</button>`:''}
-          </div>
-        </div>
-        <div class="row" style="gap:16px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:14px">
-          <div style="flex:1;min-width:110px">
-            <div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Period P&amp;L</div>
-            <div class="v ${cls(pnlPeriod)}" style="font-size:22px;font-weight:700;font-family:var(--mono);margin-top:2px">${inrS(pnlPeriod)}</div>
-          </div>
-          <div style="border-left:1px solid #e2e8f0;padding-left:14px;flex:1;min-width:90px">
-            <div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Trades</div>
-            <div style="font-size:18px;font-weight:700;color:var(--text);font-family:var(--mono);margin-top:2px">${filtTrades.length}</div>
-          </div>
-          <div style="border-left:1px solid #e2e8f0;padding-left:14px;flex:1;min-width:90px">
-            <div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Win Rate</div>
-            <div style="font-size:18px;font-weight:700;color:var(--text);font-family:var(--mono);margin-top:2px">${pct(filtM.accuracy)}</div>
-          </div>
-          <div style="border-left:1px solid #e2e8f0;padding-left:14px;flex:1;min-width:90px">
-            <div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Risk : Reward</div>
-            <div style="font-size:18px;font-weight:700;color:var(--text);font-family:var(--mono);margin-top:2px">${isFinite(filtM.rr) ? '1 : ' + filtM.rr.toFixed(1) : '—'}</div>
-          </div>
-        </div>
-        <div style="height:250px;position:relative"><canvas id="cOvGrowth"></canvas></div>
-      </div>
-      <div class="muted" style="font-size:11.5px;margin-top:10px;text-align:right">
-        Timeline: ${rangeLabel}
-      </div>
-    </div>
-
-    <!-- Right Column: Risk Surveillance & Intelligence -->
-    <div class="card" style="display:flex;flex-direction:column;justify-content:space-between">
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <div>
-            <h3 style="margin:0;font-size:15px;font-weight:700">Risk Surveillance &amp; Alerts</h3>
-            <div class="muted" style="font-size:12px;margin-top:2px">Automated trade compliance monitoring</div>
-          </div>
-          <button class="btn sm danger" onclick="go('flags')">View Flags →</button>
-        </div>
-
-        <div class="grid k2" style="gap:10px;margin-bottom:14px">
-          <div class="risk-mini-card">
-            <div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Total Red Flags</div>
-            <div style="font-size:22px;font-weight:700;font-family:var(--mono);margin-top:4px;color:${filtFlags.length?'#dc2626':'#15803d'}">${filtFlags.length}</div>
-            <div class="muted" style="font-size:11px;margin-top:2px">${filtFlags.length ? 'Violations recorded' : 'All rules followed'}</div>
-          </div>
-          <div class="risk-mini-card">
-            <div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase">High-Severity</div>
-            <div style="font-size:22px;font-weight:700;font-family:var(--mono);margin-top:4px;color:${highFlagsCount?'#dc2626':'var(--text)'}">${highFlagsCount}</div>
-            <div class="muted" style="font-size:11px;margin-top:2px">${highFlagsCount ? 'Immediate action needed' : '0 critical alerts'}</div>
-          </div>
-          <div class="risk-mini-card">
-            <div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Traders with Flags</div>
-            <div style="font-size:22px;font-weight:700;font-family:var(--mono);margin-top:4px;color:var(--text)">${flaggedTr.size} <span style="font-size:13px;font-weight:500;color:var(--text-muted)">/ ${S.traders.length}</span></div>
-            <div class="muted" style="font-size:11px;margin-top:2px">${flaggedTr.size ? `${flaggedTr.size} trader${flaggedTr.size>1?'s':''} impacted` : 'Clean portfolio'}</div>
-          </div>
-          <div class="risk-mini-card">
-            <div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Rule Discipline</div>
-            <div style="font-size:22px;font-weight:700;font-family:var(--mono);margin-top:4px;color:${filtM.ruleFollow>=95?'#15803d':'#b45309'}">${pct(filtM.ruleFollow)}</div>
-            <div class="muted" style="font-size:11px;margin-top:2px">${filtM.n} trade checks</div>
-          </div>
-        </div>
-
-        <div>
-          <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.04em">Recent Alerts (${periodTitle})</div>
-          ${filtFlags.length ? `
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${filtFlags.slice(0, 3).map(f => `
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer" onclick="openFlagDetail('${esc(f.trade.id)}','${esc(f.rule).replace(/'/g,"\\'")}')">
-                <div style="min-width:0;flex:1;padding-right:8px">
-                  <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.rule)}</div>
-                  <div class="muted" style="font-size:11px">${esc(trader(f.trade.trader)?.name || f.trade.trader)} · ${f.trade.time} IST</div>
-                </div>
-                ${levelPill(f.level)}
-              </div>
-            `).join('')}
-          </div>` : `
-          <div style="padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;text-align:center;color:#15803d;font-size:12.5px;font-weight:600">
-            ✓ Zero rule breaches recorded in ${periodTitle}.
-          </div>`}
-        </div>
-      </div>
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
-        <span class="muted" style="font-size:11.5px">Surveillance policy: real-time automated check</span>
-        <span class="pill p-pass" style="font-size:10.5px">ACTIVE</span>
-      </div>
-    </div>
+  `<div class="grid k6">
+    ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
+    ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
+    ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
+    ${kpi('P&L today', inrS(pnlToday), tToday.length+' trades', cls(pnlToday))}
+    ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
+    ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
   </div>
-
-  <div class="grid k4" style="margin-top:16px">
-    ${kpi('Period Net P&amp;L', inrS(pnlPeriod), `${filtTrades.length} trades · ${periodTitle}`, cls(pnlPeriod))}
-    ${kpi('All-Time P&amp;L', inrS(all.total), `${all.days} trading days · ${S.trades.length} trades`, cls(all.total))}
-    ${kpi('Institutional Traders', S.traders.length, `${cnt('Live')} Live · ${cnt('Testing')} Testing · ${cnt('Watch')} Watch`)}
-    ${kpi('Rule Discipline', pct(filtM.ruleFollow), `${filtM.n} trade checks conducted`, filtM.ruleFollow>=95?'pos':'amb')}
-  </div>
-
-  <div class="card" style="margin-top:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-      <div>
-        <h3 style="margin:0;font-size:15px;font-weight:700">Trader Performance &amp; Evaluation</h3>
-        <div class="muted" style="font-size:12px;margin-top:2px">Institutional trader roster, period return, rule adherence and account status</div>
-      </div>
-      <div class="row" style="gap:8px">
-        <button class="btn sm" onclick="go('traders')">Manage Traders →</button>
-        <button class="btn sm" onclick="go('compare')">Compare All →</button>
-      </div>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Trader</th>
-            <th>Broker Accounts</th>
-            <th class="n">Period P&amp;L</th>
-            <th class="n">All-Time P&amp;L</th>
-            <th>Activity (${periodTitle})</th>
-            <th>Rule Follow</th>
-            <th>Risk Flags</th>
-            <th>Status</th>
-            <th style="text-align:right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${S.traders.map(t => {
-            const accs = S.accounts.filter(a => a.trader === t.id);
-            const tTrades = tradesOf(t.id, from, to);
-            const allTrades = tradesOf(t.id);
-            const tPnl = tTrades.reduce((a, x) => a + tradePnl(x), 0);
-            const allPnl = allTrades.reduce((a, x) => a + tradePnl(x), 0);
-            const tM = metrics(tTrades);
-            const tFlags = filtFlags.filter(f => f.trade.trader === t.id);
-            const sc = scorecard(t);
-            const linkedCount = accs.filter(a => a.link === 'Linked').length;
-            return `
-            <tr class="click" onclick="openReport('${t.id}')">
-              <td>
-                <div style="font-weight:700;color:var(--text)">${esc(t.name)}</div>
-                <div class="muted mono" style="font-size:11px">${t.id} · ${t.style} · ${esc(t.segment)}</div>
-              </td>
-              <td>
-                ${accs.length === 0 ? '<span class="muted">No accounts</span>' :
-                  `<div style="font-size:12px;font-weight:600">${linkedCount}/${accs.length} Linked</div>
-                   <div class="muted mono" style="font-size:10.5px">${accs.map(a => a.zebu_uid || a.id).join(', ')}</div>`}
-              </td>
-              <td class="n ${cls(tPnl)}" style="font-weight:700;font-size:13.5px">${inrS(tPnl)}</td>
-              <td class="n ${cls(allPnl)}" style="font-weight:600;font-size:13px">${inrS(allPnl)}</td>
-              <td>
-                <div style="font-size:12.5px;font-weight:600">${tTrades.length} trades</div>
-                <div class="muted" style="font-size:11px">Win rate ${pct(tM.accuracy)}</div>
-              </td>
-              <td>
-                <div style="display:flex;align-items:center;gap:6px">
-                  <span style="font-weight:700;font-size:12.5px" class="${tM.ruleFollow>=95?'pos':tM.ruleFollow>=80?'amb':'neg'}">${pct(tM.ruleFollow)}</span>
-                </div>
-                <div class="bar" style="width:70px;height:5px;margin-top:3px"><i style="width:${Math.min(100,tM.ruleFollow)}%;background:${tM.ruleFollow>=95?'#15803d':tM.ruleFollow>=80?'#d97706':'#dc2626'}"></i></div>
-              </td>
-              <td>
-                ${tFlags.length ? `<span class="pill p-high" style="font-size:11px">${tFlags.length} flag${tFlags.length>1?'s':''}</span>` : `<span class="pill p-pass" style="font-size:11px">0 flags</span>`}
-              </td>
-              <td>
-                ${statusPill(t.status)}
-                ${t.status==='Testing'||t.status==='Watch'?`<div class="muted" style="font-size:11px;margin-top:2px">Day ${sc.day}/${sc.total}</div>`:''}
-              </td>
-              <td style="white-space:nowrap;text-align:right" onclick="event.stopPropagation()">
-                <button class="btn sm" onclick="openReport('${t.id}')">Report</button>
-                <button class="btn sm" onclick="openRules('${t.id}')">Rules</button>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:16px">
-    <h3 style="margin:0 0 12px;font-size:14px;font-weight:700">The Journey of One Trader</h3>
+  <div class="card" style="margin-top:14px"><h3>The journey of one trader</h3>
     <div class="flow">${[['Add trader','Profile, accounts, style','traders'],['Write rules','His system saved as rules','rules'],['30-day test','Small capital, we record all','trades'],['Report card','Numbers + red flags','scorecard'],['Big capital','Only if passed — keep tracking','compare']]
-      .map((s,i)=>`<div class="st" style="cursor:pointer" onclick="go('${s[2]}')"><span class="no">${i+1}</span> <b>${s[0]}</b><span>${s[1]}</span></div>`).join('')}</div>
-  </div>
-
-  <div class="card" style="margin-top:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h3 style="margin:0;font-size:14px;font-weight:700">Latest Red Flags <small style="font-weight:400;color:var(--text-muted)">${periodTitle} · most recent first</small></h3>
-      <button class="btn sm danger" onclick="go('flags')">View all flags →</button>
+      .map((s,i)=>`<div class="st" style="cursor:pointer" onclick="go('${s[2]}')"><span class="no">${i+1}</span> <b>${s[0]}</b><span>${s[1]}</span></div>`).join('')}</div></div>
+  <div class="grid c21" style="margin-top:14px">
+    <div class="card"><h3>Latest red flags <small>most recent first</small></h3>${flagTable(flags.slice(0,7))}</div>
+    <div class="card"><h3>30-day test progress</h3>
+      ${S.traders.map(t=>{ const sc=scorecard(t); return `<div style="margin-bottom:12px;cursor:pointer" onclick="openReport('${t.id}')">
+        <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span>${statusPill(t.status)} ${t.status==='Testing'||t.status==='Watch'?resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total):''}</span></div>
+        <div class="bar" style="margin-top:6px"><i style="width:${Math.min(100,sc.day/sc.total*100)}%;background:${sc.result==='Pass'?'var(--green)':sc.result==='Watch'?'var(--amber)':'var(--red)'}"></i></div>
+        <div class="muted" style="font-size:11.5px;margin-top:3px">Rule-follow ${pct(sc.m.ruleFollow)} · P&L ${inrS(sc.m.total)} · ${sc.miss} check(s) missed</div></div>`; }).join('')}
     </div>
-    ${flagTable(filtFlags.slice(0, 7))}
   </div>`;
 };
+
 function flagTable(list, showDate=true){
   if(!list.length) return `<div class="muted" style="padding:14px">No red flags. All rules followed ✓</div>`;
   return `<div class="tbl-wrap"><table><tr>${showDate?'<th>Date</th>':''}<th>Time</th><th>Trader / Account</th><th>Rule broken</th><th>What he actually did (Reason)</th><th>Status</th><th>Level</th></tr>
@@ -2515,12 +2183,81 @@ async function deleteSelectedAccounts(){
   toast(`${ids.length} broker account(s) removed permanently`);
 }
 
+const SEGMENT_OPTIONS = [
+  'Nifty',
+  'Banknifty',
+  'Sensex',
+  'Midcap',
+  'Stock',
+  'Stock (Cash)',
+  'Crude oil',
+  'Natural Gas'
+];
+
+function renderSegmentMultiSelect(curVal=''){
+  const rawParts = String(curVal || '').split(',').map(s=>s.trim()).filter(Boolean);
+  const selected = new Set(rawParts.map(s=>s.toLowerCase()));
+  const displayLabel = rawParts.length ? rawParts.join(', ') : 'Select segment(s)…';
+  return `
+  <div style="position:relative">
+    <input type="hidden" id="e_segment" value="${esc(curVal || '')}">
+    <div id="e_segment_btn" onclick="toggleSegmentDropdown(event)" style="background:#ffffff;border:1.5px solid #222222;border-radius:8px;padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;min-height:36px;font-size:13px">
+      <span id="e_segment_display" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:${rawParts.length ? '#111111' : '#6b7280'}">${esc(displayLabel)}</span>
+      <span style="font-size:11px;color:#4b5563;margin-left:6px">▼</span>
+    </div>
+    <div id="e_segment_menu" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#ffffff;border:2px solid #222222;border-radius:8px;padding:6px;max-height:220px;overflow-y:auto;z-index:100;box-shadow:0 10px 24px rgba(0,0,0,0.2)">
+      ${SEGMENT_OPTIONS.map(opt => {
+        const isChecked = selected.has(opt.toLowerCase()) || (opt === 'Banknifty' && selected.has('bank nifty options'));
+        return `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;user-select:none" class="seg-opt-label" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+          <input type="checkbox" class="seg-chk" value="${esc(opt)}" ${isChecked ? 'checked' : ''} onchange="updateSegmentSelection()" style="width:16px;height:16px;accent-color:#111111;cursor:pointer">
+          <span>${esc(opt)}</span>
+        </label>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function toggleSegmentDropdown(e){
+  if(e) e.stopPropagation();
+  const m = document.getElementById('e_segment_menu');
+  if(!m) return;
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+
+function updateSegmentSelection(){
+  const chks = document.querySelectorAll('.seg-chk:checked');
+  const sel = Array.from(chks).map(c => c.value);
+  const hidden = document.getElementById('e_segment');
+  const disp = document.getElementById('e_segment_display');
+  const str = sel.join(', ');
+  if(hidden) hidden.value = str;
+  if(disp){
+    if(sel.length){
+      disp.textContent = str;
+      disp.style.color = '#111111';
+    } else {
+      disp.textContent = 'Select segment(s)…';
+      disp.style.color = '#6b7280';
+    }
+  }
+}
+
+document.addEventListener('click', function(e){
+  const menu = document.getElementById('e_segment_menu');
+  const btn = document.getElementById('e_segment_btn');
+  if(menu && menu.style.display === 'block'){
+    if(!menu.contains(e.target) && !btn?.contains(e.target)){
+      menu.style.display = 'none';
+    }
+  }
+});
+
 function editTrader(id){
-  const t=id?trader(id):{id:'TR-'+String(S.traders.length+1).padStart(3,'0'),name:'',ra:'',style:'Manual',holding:'Intraday',segment:'Bank Nifty options',testCapital:300000,status:'Testing',start:TODAY};
+  const t=id?trader(id):{id:'TR-'+String(S.traders.length+1).padStart(3,'0'),name:'',ra:'',style:'Manual',holding:'Intraday',segment:'Nifty, Banknifty',testCapital:300000,status:'Testing',start:TODAY};
   const o=(k,arr)=>`<select id="e_${k}">${arr.map(x=>`<option ${t[k]===x?'selected':''}>${x}</option>`).join('')}</select>`;
   modal(`<h2>${id?'Edit':'Add'} trader</h2><div class="form">
    <label class="f">Trader ID<input id="e_id" value="${esc(t.id)}" ${id?'disabled':''}></label><label class="f">Name<input id="e_name" value="${esc(t.name)}"></label><label class="f">RA / dealer<input id="e_ra" value="${esc(t.ra)}"></label>
-   <label class="f">Trading style${o('style',['Manual','Algo'])}</label><label class="f">Holding style${o('holding',['Intraday','Carry forward'])}</label><label class="f">Segment<input id="e_segment" value="${esc(t.segment)}"></label>
+   <label class="f">Trading style${o('style',['Manual','Algo'])}</label><label class="f">Holding style${o('holding',['Intraday','Carry forward'])}</label><label class="f">Segment${renderSegmentMultiSelect(t.segment)}</label>
    <label class="f">Test capital (₹)<input id="e_testCapital" type="number" value="${t.testCapital}"></label><label class="f">Status${o('status',['Testing','Live','Watch','Stopped'])}</label><label class="f">Test start date<input id="e_start" type="date" value="${t.start}"></label></div>
    <div class="row" style="margin-top:16px;justify-content:flex-end">${id?`<button class="btn danger" style="margin-right:auto" onclick="delTrader('${id}')">Delete trader</button>`:''}<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveTrader(${id?`'${id}'`:'null'})">Save</button></div>`);
 }
