@@ -1336,7 +1336,7 @@ V.overview = () => {
     </div>
   </div>` : '';
 
-  return header('Overview', 'Today · ' + fmtDate(TODAY) + ' · all traders', `${LIVE?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn btn-soft-green" onclick="go('trades')">Import trades</button><button class="btn btn-soft-red" onclick="go('flags')">View red flags</button>`) +
+  return header('Overview', 'Today · ' + fmtDate(TODAY) + ' · all traders', `${LIVE&&canEdit()?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn btn-soft-green" onclick="go('trades')">Import trades</button>`:''}<button class="btn btn-soft-red" onclick="go('flags')">View red flags</button>`) +
   ovFinSection +
   `<div class="card" style="margin-bottom:16px">
     <div class="grid k3" style="gap:16px;margin-bottom:16px">
@@ -1377,7 +1377,7 @@ function flagTable(list, showDate=true){
 V.traders = () => {
   const selTrCount = SELECTED_TRADER_IDS.size;
   const selAccCount = SELECTED_ACCOUNT_IDS.size;
-  return header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn danger sm" id="btnDelTraders" style="display:${selTrCount?'inline-block':'none'};margin-right:6px" onclick="deleteSelectedTraders()">Delete selected traders (<span id="selTradersCount">${selTrCount}</span>)</button><button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
+  return header('Trader profiles','One page for every trader — who he is, his accounts, and how he trades', `${LIVE&&canEdit()?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn danger sm" id="btnDelTraders" style="display:${selTrCount?'inline-block':'none'};margin-right:6px" onclick="deleteSelectedTraders()">Delete selected traders (<span id="selTradersCount">${selTrCount}</span>)</button><button class="btn pri" onclick="editTrader()">+ Add trader</button>`:''}`) +
   `<div class="card"><div class="tbl-wrap"><table><tr>${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTraders" onchange="toggleSelectAllTraders(this.checked)" title="Select all traders"></th>`:''}<th>Trader / ID</th><th>Linked accounts</th><th>RA / dealer</th><th>Trading</th><th>Holding</th><th>Segment</th><th class="n">Test capital</th><th>Status</th><th style="text-align:right"></th></tr>
   ${S.traders.map(t=>{ 
     const acc=S.accounts.filter(a=>a.trader===t.id); 
@@ -1551,7 +1551,7 @@ V.trades = () => {
   const sortBtn = col => ` <button type="button" class="btn sm" style="padding:1px 5px;font-size:10px;line-height:1.1;margin-left:3px;vertical-align:middle" onclick="toggleTradeSort('${col}')" title="${arrowTitle}">${arrowChar}</button>`;
   const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+netTradePnl(t),0);
   const selCount = SELECTED_TRADE_IDS.size;
-  return header('Trade log','Closed trades — exact broker execution records', `${LIVE?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn btn-soft-green" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
+  return header('Trade log','Closed trades — exact broker execution records', `${LIVE&&canEdit()?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn btn-soft-green" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
   `<div class="card" style="margin-bottom:14px"><div class="row">${traderSelect('tfTr',F.trader,true)}
     <select id="tfFlag"><option value="">All trades</option><option value="flag" ${F.flag==='flag'?'selected':''}>With red flag</option><option value="ok" ${F.flag==='ok'?'selected':''}>Clean (OK)</option></select>
     <input type="date" id="tfFrom" value="${F.from}"> → <input type="date" id="tfTo" value="${F.to}">
@@ -1695,7 +1695,7 @@ V.report = () => {
         📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length || hasBrokerToday ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>${hasBrokerToday?'Broker Realised':'Realised'} P&L: <span class="${cls(dispRealised)}">${inr(dispRealised)}</span></b>${hasBrokerToday && Math.abs(fifoDiff)>=1 ? ` · <span class="muted">FIFO Closed (${closedTr.length}): <b>${inr(closedPnl)}</b></span>` : ''}${hasBrokerToday ? ` · <b>Open MTM: <span class="${cls(brokerUrmtomToday)}">${inr(brokerUrmtomToday)}</span></b>` : ''} · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
         ${staleWarning}
       </div>
-      <button class="btn sm pri" onclick="onTraderChange('${t.id}', true)">🔄 Fetch Live Zebu</button>
+      ${canEdit()?`<button class="btn sm pri" onclick="onTraderChange('${t.id}', true)">🔄 Fetch Live Zebu</button>`:''}
     </div>
   ` : '';
 
@@ -2120,9 +2120,45 @@ V.settings = () => {
     <div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr))"><label class="f">Lot size (Bank Nifty)<input id="s_lotSize" type="number" value="${s.lotSize}" ${dis}></label><label class="f">Strike step<input id="s_strikeStep" type="number" value="${s.strikeStep}" ${dis}></label></div>
     ${canEdit()?`<div class="row" style="margin-top:12px"><button class="btn danger" onclick="resetDemo()">Reset demo data</button></div>`:''}
     <div class="note" style="margin-top:12px">This copy runs on sample data. To go live with Zebu, run the server package on your own machine — the dashboard detects it and switches to <b>Live · Zebu</b> automatically, with real logins.</div></div>`;
-  const users = LIVE && ROLE==='admin' ? `<div class="card" style="margin-top:14px"><h3>Users</h3><table><tr><th>User</th><th>Role</th></tr>${USERS.map(u=>`<tr><td>${esc(u.user)}</td><td>${u.role}</td></tr>`).join('')}</table>
-    <div class="form" style="margin-top:10px"><label class="f">User<input id="u_name"></label><label class="f">Password<input id="u_pw" type="password"></label><label class="f">Role<select id="u_role"><option value="viewer">viewer</option><option value="admin">admin</option></select></label></div>
-    <button class="btn" style="margin-top:10px" onclick="saveUser()">Add / update user</button></div>` : '';
+  const users = LIVE && ROLE==='admin' ? `<div class="card" style="margin-top:14px"><h3>Users &amp; Account Access</h3>
+    <div class="tbl-wrap" style="max-height:260px"><table><tr><th>User</th><th>Role</th><th>Assigned Accounts</th><th style="text-align:right">Actions</th></tr>${USERS.map(u=>{
+      const accs = Array.isArray(u.assigned_accounts) ? u.assigned_accounts : [];
+      const accLbl = u.role==='admin'
+        ? '<span class="pill p-live">All accounts (Admin)</span>'
+        : (accs.length ? accs.map(aid=>{ const ao=account(aid); return `<span class="pill p-test" style="margin:1px 2px">${esc(ao?.name||aid)} (${esc(aid)})</span>`; }).join('') : '<span class="muted">No accounts assigned</span>');
+      return `<tr>
+        <td><b>${esc(u.user)}</b></td>
+        <td><span class="pill ${u.role==='admin'?'p-live':'p-test'}">${esc(u.role)}</span></td>
+        <td style="white-space:normal">${accLbl}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button type="button" class="btn sm" onclick="editUserRow('${esc(u.user)}')">Edit</button>
+          ${u.user!==USER?`<button type="button" class="btn sm danger" style="padding:2px 7px;font-size:11px" onclick="deleteUserRow('${esc(u.user)}')" title="Delete user">✕</button>`:''}
+        </td>
+      </tr>`;
+    }).join('')}</table></div>
+    <div class="form" style="margin-top:12px;grid-template-columns:repeat(2,minmax(0,1fr))">
+      <label class="f">User<input id="u_name" placeholder="Username" autocomplete="off"></label>
+      <label class="f">Password<input id="u_pw" type="password" placeholder="Required for new · blank to keep" autocomplete="new-password"></label>
+      <label class="f">Role<select id="u_role" onchange="onUserRoleChange()"><option value="viewer">viewer (read-only)</option><option value="admin">admin (full edit)</option></select></label>
+      <label class="f" id="u_acc_wrap">Allowed Accounts (Viewer)
+        <div style="position:relative">
+          <div id="u_acc_btn" onclick="toggleUserAccMenu(event)" style="background:#ffffff;border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;min-height:36px;font-size:13px">
+            <span id="u_acc_display" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#6b7280">Select account(s)…</span>
+            <span style="font-size:11px;color:#4b5563;margin-left:6px">▼</span>
+          </div>
+          <div id="u_acc_menu" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#ffffff;border:1px solid var(--line);border-radius:10px;padding:6px;max-height:220px;overflow-y:auto;z-index:100">
+            ${S.accounts.length ? S.accounts.map(a=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+              <input type="checkbox" class="u-acc-chk" value="${esc(a.id)}" onchange="updateUserAccSelection()" style="width:15px;height:15px;cursor:pointer">
+              <span>${esc(a.name)} <span class="muted mono" style="font-size:11.5px">(${esc(a.id)}${a.zebu_uid&&a.zebu_uid!==a.id?' · '+esc(a.zebu_uid):''})</span></span>
+            </label>`).join('') : '<div class="muted" style="padding:8px;font-size:12px">No synced accounts available</div>'}
+          </div>
+        </div>
+      </label>
+    </div>
+    <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center">
+      <button class="btn pri" onclick="saveUser()">Add / update user</button>
+      <span class="muted" style="font-size:11.5px">Changing a user's password immediately logs them out everywhere.</span>
+    </div></div>` : '';
   return header('Settings', LIVE?'Live data from Zebu (read-only)':'Demo mode') +
   `<div class="grid k2"><div>${conn}${users}</div>
    <div class="card"><h3>Red flag alerts</h3>
@@ -2855,7 +2891,7 @@ async function refreshLive(){
     render();
     // Trigger background broker poll non-blockingly at most once every 30s
     const nowMs = Date.now();
-    if(nowMs - _lastBgBrokerTrigger > 30000 && (VIEW === 'report' || VIEW === 'overview' || VIEW === 'trades')){
+    if(canEdit() && nowMs - _lastBgBrokerTrigger > 30000 && (VIEW === 'report' || VIEW === 'overview' || VIEW === 'trades')){
       _lastBgBrokerTrigger = nowMs;
       const targetId = SEL.trader;
       const acc = account(targetId) || S.accounts.find(a => a.zebu_uid === targetId || a.trader === targetId);
@@ -3210,7 +3246,88 @@ function saveSettings(){ const s=S.settings; const n=k=>{ const v=val('s_'+k); i
   save(); liveCall(()=>API.req('/settings',{method:'PUT',body:JSON.stringify(s)})); render(); toast('Settings saved'); }
 async function syncNow(btn){ if(btn){ btn.disabled=true; btn.textContent='Syncing…'; } try{ await API.req('/sync?force=1',{method:'POST'}); await API.syncAll(); toast('Synced from Zebu'); }catch(e){ toast('Sync failed: '+e.message); } render(); }
 async function testAlert(){ try{ const r=await API.req('/alerts/test',{method:'POST'}); toast(r.sent.length?'Sent via '+r.sent.join(', '):'Nothing sent — set alert contacts and server .env'); }catch(e){ toast(e.message); } }
-async function saveUser(){ const u=val('u_name').trim(); if(!u) return; try{ await API.req('/users/'+encodeURIComponent(u),{method:'PUT',body:JSON.stringify({password:val('u_pw'),role:val('u_role')})}); await API.syncAll(); render(); toast('User saved'); }catch(e){ toast(e.message); } }
+function toggleUserAccMenu(e){
+  if(e) e.stopPropagation();
+  const role = val('u_role');
+  if(role === 'admin') return;
+  const m = document.getElementById('u_acc_menu');
+  if(m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+function updateUserAccSelection(){
+  const chks = [...document.querySelectorAll('.u-acc-chk:checked')];
+  const disp = document.getElementById('u_acc_display');
+  if(!disp) return;
+  if(val('u_role') === 'admin'){
+    disp.textContent = 'All accounts (Admin)';
+    disp.style.color = '#0f9d58';
+    return;
+  }
+  if(!chks.length){
+    disp.textContent = 'Select account(s)…';
+    disp.style.color = '#6b7280';
+  } else {
+    disp.textContent = chks.map(c => { const ao = account(c.value); return ao ? `${ao.name} (${ao.id})` : c.value; }).join(', ');
+    disp.style.color = '#111827';
+  }
+}
+function onUserRoleChange(){
+  const m = document.getElementById('u_acc_menu');
+  if(m && val('u_role') === 'admin') m.style.display = 'none';
+  updateUserAccSelection();
+}
+function editUserRow(username){
+  const u = USERS.find(x => x.user === username);
+  if(!u) return;
+  const un = document.getElementById('u_name');
+  const up = document.getElementById('u_pw');
+  const ur = document.getElementById('u_role');
+  if(un) un.value = u.user;
+  if(up) up.value = '';
+  if(ur) ur.value = u.role || 'viewer';
+  const assigned = new Set(u.assigned_accounts || []);
+  document.querySelectorAll('.u-acc-chk').forEach(c => { c.checked = assigned.has(c.value); });
+  onUserRoleChange();
+  toast(`Editing "${u.user}" — update accounts or enter a new password, then click Add / update user`);
+}
+async function deleteUserRow(username){
+  if(!confirm(`Delete user "${username}" and sign them out everywhere?`)) return;
+  try {
+    await API.req('/users/' + encodeURIComponent(username), {method:'DELETE'});
+    USERS = await API.req('/users');
+    render();
+    toast(`User "${username}" deleted`);
+  } catch(e){ toast(e.message); }
+}
+async function saveUser(){
+  const u = val('u_name').trim();
+  if(!u){ toast('Please enter a username'); return; }
+  const role = val('u_role') || 'viewer';
+  const assigned_accounts = role === 'admin' ? [] : [...document.querySelectorAll('.u-acc-chk:checked')].map(c => c.value);
+  if(role === 'viewer' && !assigned_accounts.length){
+    toast('Select at least one account for this viewer');
+    return;
+  }
+  const pw = val('u_pw') || '';
+  try{
+    const res = await API.req('/users/'+encodeURIComponent(u),{method:'PUT',body:JSON.stringify({password:pw,role,assigned_accounts})});
+    if(pw && u === USER){
+      toast('Your password was changed — please sign in again');
+      logout();
+      return;
+    }
+    USERS = await API.req('/users');
+    await API.syncAll();
+    render();
+    toast(pw && res.sessions_revoked ? `User saved — signed out everywhere (${res.sessions_revoked} session${res.sessions_revoked===1?'':'s'} revoked)` : 'User saved');
+  }catch(e){ toast(e.message); }
+}
+document.addEventListener('click', function(e){
+  const menu = document.getElementById('u_acc_menu');
+  const btn = document.getElementById('u_acc_btn');
+  if(menu && menu.style.display === 'block'){
+    if(!menu.contains(e.target) && !btn?.contains(e.target)) menu.style.display = 'none';
+  }
+});
 function resetDemo(){ if(LIVE) return; modal(`<h2>Reset demo data?</h2><p>All changes in this browser will be replaced with fresh sample data.</p><div class="row" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn danger" onclick="S=buildDemo();save();closeModal();render();toast('Demo data reset')">Reset</button></div>`); }
 
 // ---------- export ----------
@@ -3281,7 +3398,7 @@ function render(){
 async function onTraderChange(targetId, forceFetch=false){
   SEL.trader = targetId;
   render();
-  if(LIVE){
+  if(LIVE && canEdit()){
     try {
       const t = trader(targetId);
       toast('Fetching live details for ' + (t?.name || targetId) + ' from Zebu...');
@@ -3350,6 +3467,13 @@ function initDashboardWebSocket(){
     WS_CLIENT.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
+        if(msg.type === 'force_logout'){
+          try { WS_CLIENT.close(); } catch(e){}
+          WS_CLIENT = null;
+          logout();
+          toast(msg.reason ? `Signed out — ${msg.reason}` : 'Signed out — please sign in again');
+          return;
+        }
         if(msg.type === 'financial_summary_updated' && msg.account_id){
           const prev = OV_FIN_CACHE[msg.account_id];
           if(prev){
