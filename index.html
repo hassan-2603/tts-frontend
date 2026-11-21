@@ -2161,14 +2161,18 @@ V.settings = () => {
     </div></div>` : '';
   return header('Settings', LIVE?'Live data from Zebu (read-only)':'Demo mode') +
   `<div class="grid k2"><div>${conn}${users}</div>
-   <div class="card"><h3>Red flag alerts</h3>
+   <div class="card"><h3>Red flag alerts &amp; Daily reports</h3>
     <div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr))">
-      <label class="f">Telegram chat ID<input id="a_telegram" value="${esc(s.alerts.telegram)}" ${dis}></label><label class="f">WhatsApp number<input id="a_whatsapp" value="${esc(s.alerts.whatsapp)}" ${dis}></label>
-      <label class="f">Email<input id="a_email" value="${esc(s.alerts.email)}" ${dis}></label><label class="f">Daily summary at<input id="a_summaryTime" type="time" value="${s.alerts.summaryTime}" ${dis}></label>
+      <label class="f">Telegram chat ID<input id="a_telegram" value="${esc(s.alerts.telegram)}" ${dis}></label>
+      <label class="f">WhatsApp number(s)<input id="a_whatsapp" value="${esc(s.alerts.whatsapp)}" placeholder="+919876543210, +919811112222" ${dis}></label>
+      <label class="f">Email (Gmail / report recipient)<input id="a_email" value="${esc(s.alerts.email)}" placeholder="client@gmail.com" ${dis}></label>
+      <label class="f">Daily summary at (IST)<input id="a_summaryTime" type="time" value="${s.alerts.summaryTime}" ${dis}></label>
       <label class="f">Alert on High flags<select id="a_onHigh" ${dis}><option value="true" ${s.alerts.onHigh?'selected':''}>Yes</option><option value="false" ${!s.alerts.onHigh?'selected':''}>No</option></select></label>
       <label class="f">Daily summary at market close<select id="a_dailySummary" ${dis}><option value="true" ${s.alerts.dailySummary?'selected':''}>Yes</option><option value="false" ${!s.alerts.dailySummary?'selected':''}>No</option></select></label>
-    </div>${canEdit()?`<button class="btn pri" style="margin-top:12px" onclick="saveSettings()">Save settings</button>`:''}
-    <div class="muted" style="font-size:12px;margin-top:8px">${LIVE?'The server sends these. Telegram bot token, SMTP and WhatsApp provider are set in the server .env.':'Alerts are sent by the server in live mode.'}</div></div></div>`+
+      <label class="f">Email delivery (Resend + Excel)<select id="a_emailEnabled" ${dis}><option value="true" ${s.alerts.emailEnabled!==false?'selected':''}>Enabled</option><option value="false" ${s.alerts.emailEnabled===false?'selected':''}>Disabled</option></select></label>
+      <label class="f">WhatsApp delivery (Meta Cloud)<select id="a_whatsappEnabled" ${dis}><option value="true" ${s.alerts.whatsappEnabled!==false?'selected':''}>Enabled</option><option value="false" ${s.alerts.whatsappEnabled===false?'selected':''}>Disabled</option></select></label>
+    </div>${canEdit()?`<div class="row" style="margin-top:12px;gap:8px"><button class="btn pri" onclick="saveSettings()">Save settings</button>${LIVE?`<button class="btn btn-soft-green" type="button" onclick="sendDailyReportNow(this)">Send daily report now</button>`:''}</div>`:''}
+    <div class="muted" style="font-size:12px;margin-top:8px">${LIVE?'Use comma-separated numbers in WhatsApp for multiple individual recipients. Resend API key and Meta WhatsApp Cloud credentials are managed securely on the server.':'Alerts are sent by the server in live mode.'}</div></div></div>`+
   (LIVE?'':`<div class="card" style="margin-top:14px"><h3>API endpoints to implement <small>read-only for broker data — no order endpoints exist</small></h3>
   <pre class="code">GET  /traders                 → [{id,name,ra,style:"Manual|Algo",holding:"Intraday|Carry forward",segment,testCapital,status:"Testing|Live|Watch|Stopped",start:"YYYY-MM-DD",extended?}]
 PUT  /traders/:id             ← trader object
@@ -3243,7 +3247,17 @@ function saveGroup(id,exists){ const g={id,name:val('g_name')||'Group',accounts:
 function delGroup(id){ S.groups=S.groups.filter(g=>g.id!==id); SEL.group=S.groups[0]?.id; save(); liveCall(()=>API.deleteGroup(id)); closeModal(); render(); }
 function saveSettings(){ const s=S.settings; const n=k=>{ const v=val('s_'+k); if(v!==undefined) s[k]=+v; }; n('lotSize'); n('strikeStep');
   ['telegram','whatsapp','email','summaryTime'].forEach(k=>s.alerts[k]=val('a_'+k)); s.alerts.onHigh=val('a_onHigh')==='true'; s.alerts.dailySummary=val('a_dailySummary')==='true';
+  s.alerts.emailEnabled=val('a_emailEnabled')!=='false'; s.alerts.whatsappEnabled=val('a_whatsappEnabled')!=='false';
   save(); liveCall(()=>API.req('/settings',{method:'PUT',body:JSON.stringify(s)})); render(); toast('Settings saved'); }
+async function sendDailyReportNow(btn){
+  if(btn){ btn.disabled=true; btn.textContent='Queueing report…'; }
+  try {
+    const r = await API.req('/notifications/daily-report/send', {method:'POST', body:JSON.stringify({date:TODAY, force:true})});
+    const emN = (r.jobs?.email||[]).length, waN = (r.jobs?.whatsapp||[]).length;
+    toast(`Daily report queued (${r.report_status||'FINAL'}): ${emN} email, ${waN} WhatsApp`);
+  } catch(e){ toast('Report failed: ' + e.message); }
+  finally { if(btn){ btn.disabled=false; btn.textContent='Send daily report now'; } }
+}
 async function syncNow(btn){ if(btn){ btn.disabled=true; btn.textContent='Syncing…'; } try{ await API.req('/sync?force=1',{method:'POST'}); await API.syncAll(); toast('Synced from Zebu'); }catch(e){ toast('Sync failed: '+e.message); } render(); }
 async function testAlert(){ try{ const r=await API.req('/alerts/test',{method:'POST'}); toast(r.sent.length?'Sent via '+r.sent.join(', '):'Nothing sent — set alert contacts and server .env'); }catch(e){ toast(e.message); } }
 function toggleUserAccMenu(e){
