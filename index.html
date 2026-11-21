@@ -199,7 +199,7 @@ function rng(seed){ let s=seed>>>0; return ()=>{ s=(s*1664525+1013904223)>>>0; r
 const DEFAULT_SETTINGS = {
   dataSource:'live', apiBase:'/api', apiKey:'',
   lotSize:30, strikeStep:100, testDays:30, extendDays:15,
-  pass:{ ruleFollow:95, highFlags:2, maxDDpct:10, accuracy:50, rr:1.5, pf:1.3 },
+  pass:{ ruleFollow:95, highFlags:2, maxDDpct:10, accuracy:50, rr:1.5 },
   capitalSteps:'₹5 L → ₹15 L → ₹50 L',
   alerts:{ telegram:'', whatsapp:'', email:'', onHigh:true, dailySummary:true, summaryTime:'15:35' }
 };
@@ -482,6 +482,135 @@ function moneyness(t, step){ // +n = n strikes ITM, -n = n strikes OTM, 0 = ATM
 function mLabel(d){ if(isNaN(d)) return 'spot n/a'; return d===0?'ATM': d>0? d+' ITM' : (-d)+' OTM'; }
 function expectedStrike(t, r, step){ if(!t.spot) return '—'; const atm=Math.round(t.spot/step)*step; const n = r.strikeMode==='ATM'?0:r.strikeDist; const sign = r.strikeMode==='ITM'?1:(r.strikeMode==='OTM'?-1:0); return t.opt==='CE'? atm - sign*n*step : atm + sign*n*step; }
 
+// ---------- Easy-Language Custom Rule Parser & Evaluator ----------
+function _parseAmtToken(str){
+  if(!str) return null;
+  const m = String(str).replace(/,/g,'').match(/(\d+(?:\.\d+)?)\s*(k|l|lac|lakh)?/i);
+  if(!m) return null;
+  let v = parseFloat(m[1]);
+  const u = (m[2]||'').toLowerCase();
+  if(u==='k') v *= 1000;
+  else if(u==='l'||u==='lac'||u==='lakh') v *= 100000;
+  return v;
+}
+function _parseTimeToken(str){
+  if(!str) return null;
+  const m = String(str).match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
+  if(!m) return null;
+  let h = parseInt(m[1],10), mn = parseInt(m[2]||'0',10);
+  const ap = (m[3]||'').toLowerCase();
+  if(ap==='pm' && h<12) h += 12;
+  if(ap==='am' && h===12) h = 0;
+  if(!ap && h>=1 && h<=6) h += 12; // 2:30 -> 14:30 in Indian market hours
+  if(h<0||h>23||mn<0||mn>59) return null;
+  return String(h).padStart(2,'0')+':'+String(mn).padStart(2,'0');
+}
+function parseCustomRule(rawText){
+  const text = String(rawText||'').trim();
+  if(!text) return { ok:false, checks:[], summary:'' };
+  const s = text.toLowerCase().replace(/\s+/g,' ');
+  const checks = [];
+  const syms = ['BANKNIFTY','NIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','BANKEX','CRUDEOIL','NATURALGAS'];
+  const symAlias = [['bank nifty','BANKNIFTY'],['banknifty','BANKNIFTY'],['fin nifty','FINNIFTY'],['finnifty','FINNIFTY'],['midcap nifty','MIDCPNIFTY'],['midcap','MIDCPNIFTY'],['midcpnifty','MIDCPNIFTY'],['nifty','NIFTY'],['sensex','SENSEX'],['bankex','BANKEX'],['crude oil','CRUDEOIL'],['crude','CRUDEOIL'],['natural gas','NATURALGAS']];
+
+  // 1. Instrument allow / block
+  if(/\b(no|avoid|dont|don't|never|ban)\b/.test(s)){
+    for(const [alias, sym] of symAlias){
+      if(new RegExp(`\\b(no|avoid|dont|don't|never|ban)\\s+(trading\\s+)?(in\\s+)?${alias}\\b`).test(s)){
+        if(!checks.some(c=>c.type==='ban_symbol'&&c.val===sym)) checks.push({type:'ban_symbol', val:sym, desc:`No ${sym} trades`});
+      }
+    }
+    if(/\b(no|avoid|dont|don't|never)\s+(trading\s+)?(in\s+)?(ce|calls?)\b/.test(s)) checks.push({type:'ban_opt', val:'CE', desc:'No Call (CE) trades'});
+    if(/\b(no|avoid|dont|don't|never)\s+(trading\s+)?(in\s+)?(pe|puts?)\b/.test(s)) checks.push({type:'ban_opt', val:'PE', desc:'No Put (PE) trades'});
+    if(/\b(no|avoid|dont|don't|never)\s+(trading\s+)?(in\s+)?(futures?|fut)\b/.test(s)) checks.push({type:'ban_opt', val:'FUT', desc:'No Futures trades'});
+    if(/\b(no|avoid|dont|don't|never)\s+(trading\s+)?(in\s+)?(options?|opt)\b/.test(s)) checks.push({type:'ban_options', desc:'No Options (CE/PE) trades'});
+    if(/\b(no|avoid|dont|don't|never)\s+(option\s+)?(selling|short|shorting|sell)\b/.test(s)) checks.push({type:'only_side', val:'BUY', desc:'Buying only (no selling/shorting)'});
+    if(/\b(no|avoid|dont|don't|never)\s+(option\s+)?(buying|long|buy)\b/.test(s)) checks.push({type:'only_side', val:'SELL', desc:'Selling only (no buying)'});
+  }
+  if(/\bonly\b/.test(s)){
+    for(const [alias, sym] of symAlias){
+      if(new RegExp(`\\bonly\\s+(trade\\s+)?(in\\s+)?${alias}\\b|\\b${alias}\\s+only\\b`).test(s)){
+        if(!checks.some(c=>c.type==='only_symbol'&&c.val===sym)) checks.push({type:'only_symbol', val:sym, desc:`Only ${sym}`});
+      }
+    }
+    if(/\bonly\s+(ce|calls?)\b|\b(ce|calls?)\s+only\b/.test(s)) checks.push({type:'only_opt', val:'CE', desc:'Calls (CE) only'});
+    if(/\bonly\s+(pe|puts?)\b|\b(pe|puts?)\s+only\b/.test(s)) checks.push({type:'only_opt', val:'PE', desc:'Puts (PE) only'});
+    if(/\bonly\s+(option\s+)?(buying|buy|long)\b|\b(buying|buy)\s+only\b/.test(s)) checks.push({type:'only_side', val:'BUY', desc:'Buying only'});
+    if(/\bonly\s+(option\s+)?(selling|sell|short)\b|\b(selling|sell)\s+only\b/.test(s)) checks.push({type:'only_side', val:'SELL', desc:'Selling only'});
+    if(/\b(only\s+equity|equity\s+only|cash\s+only)\b/.test(s)) checks.push({type:'ban_options', desc:'Equity / Cash only (no options)'});
+  }
+
+  // 2. Expiry & 0DTE
+  if(/\b(no|avoid|dont|don't|never)\s+(trading\s+)?(on\s+)?(expiry\s*day|0\s*dte|zero\s*dte)\b/.test(s)) checks.push({type:'no_expiry_day', desc:'No 0DTE / expiry-day trading'});
+  if(/\b(no|avoid|dont|don't)\s+weekly(\s+expiry)?\b|\bonly\s+monthly(\s+expiry)?\b|\bmonthly(\s+expiry)?\s+only\b/.test(s)) checks.push({type:'only_expiry_type', val:'Monthly', desc:'Monthly expiry only'});
+  if(/\b(no|avoid|dont|don't)\s+monthly(\s+expiry)?\b|\bonly\s+weekly(\s+expiry)?\b|\bweekly(\s+expiry)?\s+only\b/.test(s)) checks.push({type:'only_expiry_type', val:'Weekly', desc:'Weekly expiry only'});
+
+  // 3. Strike / Moneyness
+  if(/\b(no|avoid|dont|don't)\s+deep\s+otm\b/.test(s)) checks.push({type:'max_otm_strikes', val:2, desc:'No deep OTM (> 2 strikes OTM)'});
+  else if(/\b(no|avoid|dont|don't)\s+otm\b/.test(s)) checks.push({type:'ban_moneyness', val:'OTM', desc:'No OTM strikes'});
+  if(/\b(no|avoid|dont|don't)\s+itm\b/.test(s)) checks.push({type:'ban_moneyness', val:'ITM', desc:'No ITM strikes'});
+  if(/\bonly\s+atm\b|\batm\s+only\b/.test(s)) checks.push({type:'only_moneyness', val:'ATM', desc:'ATM strikes only'});
+  if(/\bonly\s+itm\b|\bitm\s+only\b/.test(s)) checks.push({type:'only_moneyness', val:'ITM', desc:'ITM strikes only'});
+  if(/\bonly\s+otm\b|\botm\s+only\b/.test(s)) checks.push({type:'only_moneyness', val:'OTM', desc:'OTM strikes only'});
+  const mOtm = s.match(/max\s+(\d+)\s+strikes?\s+otm/);
+  if(mOtm) checks.push({type:'max_otm_strikes', val:parseInt(mOtm[1],10), desc:`Max ${mOtm[1]} strikes OTM`});
+
+  // 4. Time windows
+  const mBetween = s.match(/between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(?:and|to|-)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+  if(mBetween){
+    const t1 = _parseTimeToken(mBetween[1]), t2 = _parseTimeToken(mBetween[2]);
+    if(t1) checks.push({type:'time_after', val:t1, desc:`Entry from ${t1}`});
+    if(t2) checks.push({type:'time_before', val:t2, desc:`Entry till ${t2}`});
+  } else {
+    const mAfter = s.match(/(?:no|avoid|dont|don't|stop)\s+(?:new\s+)?(?:trades?|trading|entry|entries)\s+after\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+    if(mAfter){ const t=_parseTimeToken(mAfter[1]); if(t) checks.push({type:'time_before', val:t, desc:`No entry after ${t}`}); }
+    const mBefore = s.match(/(?:no|avoid|dont|don't)\s+(?:new\s+)?(?:trades?|trading|entry|entries)\s+before\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+    if(mBefore){ const t=_parseTimeToken(mBefore[1]); if(t) checks.push({type:'time_after', val:t, desc:`No entry before ${t}`}); }
+  }
+  const mExitBefore = s.match(/exit\s+before\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+  if(mExitBefore){ const t=_parseTimeToken(mExitBefore[1]); if(t) checks.push({type:'exit_before', val:t, desc:`Exit before ${t}`}); }
+  const mFirst = s.match(/(?:no|avoid|dont|don't)\s+(?:trades?|trading|entry)\s+(?:in\s+)?first\s+(\d+)\s*min/);
+  if(mFirst){ const t=fromMin(9*60+15+parseInt(mFirst[1],10)); checks.push({type:'time_after', val:t, desc:`No entry in first ${mFirst[1]} min (before ${t})`}); }
+  const mLast = s.match(/(?:no|avoid|dont|don't)\s+(?:trades?|trading|entry)\s+(?:in\s+)?last\s+(\d+)\s*min/);
+  if(mLast){ const t=fromMin(15*60+30-parseInt(mLast[1],10)); checks.push({type:'time_before', val:t, desc:`No entry in last ${mLast[1]} min (after ${t})`}); }
+
+  // 5. Lots / Qty / Trades per day / Consecutive losses / Revenge trading
+  const mLots = s.match(/(?:max|maximum|no more than|limit|upto|up to)\s+(\d+(?:\.\d+)?)\s*lots?\b/);
+  if(mLots) checks.push({type:'max_lots', val:parseFloat(mLots[1]), desc:`Max ${mLots[1]} lots/trade`});
+  const mQty = s.match(/(?:max|maximum|no more than|limit|upto|up to)\s+(\d+)\s*(?:qty|quantity|shares)\b/);
+  if(mQty) checks.push({type:'max_qty', val:parseInt(mQty[1],10), desc:`Max ${mQty[1]} qty/trade`});
+  const mConsec = s.match(/(?:stop\s+after|max|maximum|no more than)\s+(\d+)\s+(?:consecutive|back\s*to\s*back|row)\s+loss(?:es|ing\s+trades?)?/);
+  if(mConsec) checks.push({type:'max_consec_losses', val:parseInt(mConsec[1],10), desc:`Stop after ${mConsec[1]} consecutive losses`});
+  const mLossTrades = s.match(/(?:stop\s+after|max|maximum|no more than)\s+(\d+)\s+(?:losing\s+trades?|losses)\s*(?:per\s+day|a\s+day|\/day|daily)?/);
+  if(mLossTrades && !mConsec) checks.push({type:'max_losing_trades_day', val:parseInt(mLossTrades[1],10), desc:`Max ${mLossTrades[1]} losing trades/day`});
+  const mTrades = s.match(/(?:max|maximum|no more than|limit|upto|up to)\s+(\d+)\s+trades?\s*(?:per\s+day|a\s+day|\/day|daily)?/);
+  if(mTrades) checks.push({type:'max_trades_day', val:parseInt(mTrades[1],10), desc:`Max ${mTrades[1]} trades/day`});
+  if(/\b(no|avoid|dont|don't)\s+revenge\s+trad/.test(s)) checks.push({type:'no_revenge', val:5, desc:'No revenge trading (re-entry within 5 min of a loss)'});
+
+  // 6. Risk / SL / Loss / Profit target
+  const mSlLot = s.match(/(?:max\s+)?(?:sl|stop\s*-?\s*loss|loss)\s*(?:max\s+)?(?:₹|rs\.?|inr)?\s*([\d,.]+\s*(?:k|l|lac|lakh)?)\s*(?:per|\/)\s*lot/);
+  if(mSlLot){ const v=_parseAmtToken(mSlLot[1]); if(v>0) checks.push({type:'sl_per_lot', val:v, desc:`Max SL ${inr(v)}/lot`}); }
+  const mDayLoss = s.match(/(?:max\s+(?:daily|day)\s+loss|daily\s+loss\s+(?:limit|max)|stop\s+after\s+(?:₹|rs\.?|inr)?\s*([\d,.]+\s*(?:k|l|lac|lakh)?)\s*(?:daily\s+)?loss)(?:\s*(?:of|is|:)?\s*(?:₹|rs\.?|inr)?\s*([\d,.]+\s*(?:k|l|lac|lakh)?))?/);
+  if(mDayLoss){ const v=_parseAmtToken(mDayLoss[1]||mDayLoss[2]); if(v>0) checks.push({type:'daily_loss', val:v, desc:`Stop after ${inr(v)} daily loss`}); }
+  const mDayProfit = s.match(/(?:stop\s+after\s+(?:₹|rs\.?|inr)?\s*([\d,.]+\s*(?:k|l|lac|lakh)?)\s*(?:daily\s+)?profit|(?:daily\s+)?profit\s+target\s*(?:of|is|:)?\s*(?:₹|rs\.?|inr)?\s*([\d,.]+\s*(?:k|l|lac|lakh)?))/);
+  if(mDayProfit){ const v=_parseAmtToken(mDayProfit[1]||mDayProfit[2]); if(v>0) checks.push({type:'daily_profit_cap', val:v, desc:`Stop after ${inr(v)} daily profit target`}); }
+  const mTradeLoss = s.match(/(?:max\s+(?:sl|stop\s*-?\s*loss|loss)\s*(?:of|is|:)?\s*(?:₹|rs\.?|inr)?\s*([\d,.]+\s*(?:k|l|lac|lakh)?)\s*(?:per\s+trade|\/trade|in\s+(?:a|one)\s+trade)?)/);
+  if(mTradeLoss && !mSlLot && !mDayLoss){ const v=_parseAmtToken(mTradeLoss[1]); if(v>0) checks.push({type:'max_loss_trade', val:v, desc:`Max loss ${inr(v)}/trade`}); }
+
+  // 7. Holding / Product / Hedge / Source
+  if(/\b(intraday\s+only|mis\s+only|no\s+overnight|no\s+carry\s*forward|no\s+btst|no\s+nrml|avoid\s+overnight|avoid\s+btst)\b/.test(s)) checks.push({type:'intraday_only', desc:'Intraday only (no overnight / BTST / NRML)'});
+  if(/\b(no\s+naked\s+(?:sell|selling|options?)|hedge\s+required|must\s+hedge|always\s+hedge|only\s+hedged)\b/.test(s)) checks.push({type:'hedge_required', desc:'Hedge required (no naked positions)'});
+  if(/\b(manual\s+only|only\s+manual|no\s+algo)\b/.test(s)) checks.push({type:'only_source', val:'Manual', desc:'Manual trades only'});
+  if(/\b(algo\s+only|only\s+algo|no\s+manual)\b/.test(s)) checks.push({type:'only_source', val:'Algo', desc:'Algo trades only'});
+  const mMinHold = s.match(/(?:min|minimum)\s+hold(?:ing)?(?:\s+time)?\s+(\d+)\s*min/);
+  if(mMinHold) checks.push({type:'min_hold', val:parseInt(mMinHold[1],10), desc:`Min holding time ${mMinHold[1]} min`});
+  else if(/\b(no|avoid|dont|don't)\s+scalp/.test(s)) checks.push({type:'min_hold', val:2, desc:'No scalping (min 2 min hold)'});
+  const mMaxHold = s.match(/(?:max|maximum)\s+hold(?:ing)?(?:\s+time)?\s+(\d+)\s*min/);
+  if(mMaxHold) checks.push({type:'max_hold', val:parseInt(mMaxHold[1],10), desc:`Max holding time ${mMaxHold[1]} min`});
+
+  return { ok: checks.length > 0, checks, summary: checks.map(c=>c.desc).join(' · ') };
+}
+
 // The rule checker: compares each trade with the account/trader's own rules
 function checkAll(){
   const step=S.settings.strikeStep, flags=[], byTrade={}, unevaluatedByTrade={};
@@ -494,7 +623,13 @@ function checkAll(){
     list.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
     const sample = list[0];
     const r = S.rules[sample.account] || S.rules[sample.trader] || DEFAULT_RULES;
-    let dayPnl=0, stopHit=false;
+    const customParsed = (Array.isArray(r.customRules) ? r.customRules : []).map(cr => ({
+      text: cr.text || '',
+      level: cr.level || 'Medium',
+      parsed: parseCustomRule(cr.text || ''),
+    })).filter(x => x.parsed.ok);
+
+    let dayPnl=0, stopHit=false, consecLosses=0, dayLossCount=0, lastLossExitMin=null;
     const seenEntries=[];
     list.forEach((t)=>{
       const f=[], u=[];
@@ -523,17 +658,72 @@ function checkAll(){
       if(r.maxTradesDay && seqIdx>=r.maxTradesDay) add('Max '+r.maxTradesDay+' trades / day', 'Took trade no. '+(seqIdx+1), 'Medium');
       if(r.maxLots && t.lots>r.maxLots) add('Max '+r.maxLots+' lots / trade', 'Took '+t.lots+' lots', 'Medium');
       const hasPnl = !(t.open && (t.pnl === null || t.pnl === undefined));
+      const gVal = hasPnl ? grossPnl(t) : null;
       if(hasPnl){
-        const g=grossPnl(t);
+        const g=gVal;
         if(r.slPerLot && g<0 && t.lots>0 && -g/t.lots > r.slPerLot) add('SL max '+inr(r.slPerLot)+' / lot', 'Lost '+inr(-g/t.lots)+' per lot', 'High');
         if(r.dailyLoss && stopHit) add('Stop after '+inr(r.dailyLoss)+' day loss', 'Kept trading after loss limit hit', 'High');
-        dayPnl += g; if(r.dailyLoss && dayPnl <= -r.dailyLoss) stopHit=true;
       } else if(r.slPerLot) {
         u.push({rule:'SL max '+inr(r.slPerLot)+' / lot', reason:'Live LTP unavailable from broker', status:'UNEVALUATED'});
       }
       if(r.source!=='ANY' && t.source!==r.source) add(r.source+' trades only', 'Trade placed '+t.source, 'Low');
       if(String(r.hedge)==='true' && !t.hedged) add('Hedge required', 'No hedge leg', 'Medium');
       if(r.expiry!=='ANY' && t.expiryType && t.expiryType!==r.expiry) add(r.expiry+' expiry only', 'Traded '+t.expiryType+' expiry', 'Low');
+
+      // Evaluate user-defined plain-English custom rules
+      const tMin = toMin(t.time), eMin = (t.exitDate===t.date && t.exitTime && t.exitTime!=='OPEN') ? toMin(t.exitTime) : null;
+      const holdMin = (tMin!==null && eMin!==null && eMin>=tMin) ? (eMin - tMin) : null;
+      const symU = String(t.symbol||'').toUpperCase();
+      const optU = String(t.opt||'').toUpperCase();
+      const qtyVal = Number(t.qty || (Number(t.lots||0)*Number(t.lotSize||1)) || 0);
+      customParsed.forEach(cr => {
+        const lbl = 'Custom: ' + cr.text;
+        const lv = cr.level || 'Medium';
+        cr.parsed.checks.forEach(c => {
+          if(c.type==='ban_symbol' && symU===c.val) add(lbl, `Traded banned symbol ${symU}`, lv);
+          else if(c.type==='only_symbol' && symU!==c.val) add(lbl, `Traded ${symU} (allowed: ${c.val})`, lv);
+          else if(c.type==='ban_opt' && optU===c.val) add(lbl, `Traded ${optU}`, lv);
+          else if(c.type==='only_opt' && optU && optU!==c.val) add(lbl, `Traded ${optU} (allowed: ${c.val})`, lv);
+          else if(c.type==='ban_options' && (optU==='CE'||optU==='PE')) add(lbl, `Traded option ${symU} ${t.strike||''} ${optU}`, lv);
+          else if(c.type==='only_side' && t.side!==c.val) add(lbl, `${t.side} trade (allowed: ${c.val})`, lv);
+          else if(c.type==='no_expiry_day' && t.expiry && String(t.expiry).slice(0,10)===t.date) add(lbl, `Traded on expiry day (${t.expiry})`, lv);
+          else if(c.type==='only_expiry_type' && t.expiryType && t.expiryType!==c.val) add(lbl, `Traded ${t.expiryType} expiry`, lv);
+          else if(c.type==='ban_moneyness' && (optU==='CE'||optU==='PE') && t.spot){
+            const md = moneyness(t, step).d;
+            if((c.val==='OTM' && md<0) || (c.val==='ITM' && md>0)) add(lbl, `${t.strike} ${optU} is ${mLabel(md)}`, lv);
+          } else if(c.type==='only_moneyness' && (optU==='CE'||optU==='PE') && t.spot){
+            const md = moneyness(t, step).d;
+            if((c.val==='ATM' && md!==0) || (c.val==='ITM' && md<=0) || (c.val==='OTM' && md>=0)) add(lbl, `${t.strike} ${optU} is ${mLabel(md)}`, lv);
+          } else if(c.type==='max_otm_strikes' && (optU==='CE'||optU==='PE') && t.spot){
+            const md = moneyness(t, step).d;
+            if(md < -c.val) add(lbl, `${t.strike} ${optU} is ${mLabel(md)} (max ${c.val} OTM)`, lv);
+          } else if(c.type==='time_after' && tMin!==null && toMin(c.val)!==null && tMin < toMin(c.val)) add(lbl, `Entry at ${t.time} (before ${c.val})`, lv);
+          else if(c.type==='time_before' && tMin!==null && toMin(c.val)!==null && tMin > toMin(c.val)) add(lbl, `Entry at ${t.time} (after ${c.val})`, lv);
+          else if(c.type==='exit_before' && eMin!==null && toMin(c.val)!==null && eMin > toMin(c.val)) add(lbl, `Exited at ${t.exitTime} (after ${c.val})`, lv);
+          else if(c.type==='max_lots' && Number(t.lots||0) > c.val) add(lbl, `Took ${t.lots} lots (max ${c.val})`, lv);
+          else if(c.type==='max_qty' && qtyVal > c.val) add(lbl, `Took ${qtyVal} qty (max ${c.val})`, lv);
+          else if(c.type==='max_trades_day' && seqIdx >= c.val) add(lbl, `Took trade #${seqIdx+1} (max ${c.val}/day)`, lv);
+          else if(c.type==='max_consec_losses' && consecLosses >= c.val) add(lbl, `Traded after ${consecLosses} consecutive losses`, lv);
+          else if(c.type==='max_losing_trades_day' && dayLossCount >= c.val) add(lbl, `Traded after ${dayLossCount} losing trades today`, lv);
+          else if(c.type==='no_revenge' && lastLossExitMin!==null && tMin!==null && (tMin - lastLossExitMin) >= 0 && (tMin - lastLossExitMin) <= c.val) add(lbl, `Re-entered ${tMin - lastLossExitMin} min after a loss`, lv);
+          else if(c.type==='sl_per_lot' && hasPnl && gVal<0 && t.lots>0 && (-gVal/t.lots) > c.val) add(lbl, `Lost ${inr(-gVal/t.lots)}/lot (max ${inr(c.val)})`, lv);
+          else if(c.type==='max_loss_trade' && hasPnl && gVal<0 && (-gVal) > c.val) add(lbl, `Lost ${inr(-gVal)} in one trade (max ${inr(c.val)})`, lv);
+          else if(c.type==='daily_loss' && dayPnl <= -c.val) add(lbl, `Kept trading after day P&L hit ${inr(dayPnl)}`, lv);
+          else if(c.type==='daily_profit_cap' && dayPnl >= c.val) add(lbl, `Kept trading after profit target ${inr(c.val)} hit (${inr(dayPnl)})`, lv);
+          else if(c.type==='intraday_only' && (t.product==='NRML' || carriedOver)) add(lbl, 'Carried position overnight / NRML', lv);
+          else if(c.type==='hedge_required' && !t.hedged) add(lbl, 'Unhedged / naked position', lv);
+          else if(c.type==='only_source' && t.source!==c.val) add(lbl, `Placed via ${t.source} (allowed: ${c.val})`, lv);
+          else if(c.type==='min_hold' && holdMin!==null && holdMin < c.val) add(lbl, `Held only ${holdMin} min (min ${c.val} min)`, lv);
+          else if(c.type==='max_hold' && holdMin!==null && holdMin > c.val) add(lbl, `Held ${holdMin} min (max ${c.val} min)`, lv);
+        });
+      });
+
+      if(hasPnl){
+        dayPnl += gVal;
+        if(r.dailyLoss && dayPnl <= -r.dailyLoss) stopHit=true;
+        if(gVal < 0){ consecLosses++; dayLossCount++; if(eMin!==null) lastLossExitMin = eMin; }
+        else if(gVal > 0){ consecLosses = 0; }
+      }
       byTrade[t.id]=f;
       if(u.length) unevaluatedByTrade[t.id]=u;
       f.forEach(x=>flags.push({...x, trade:t}));
@@ -615,7 +805,37 @@ function metrics(trades, capital, accountId=null){
   const dk=Object.keys(days).sort();
   let cum=0,peak=0,mdd=0,mddDay=null; const series=[], dd=[];
   dk.forEach(d=>{ cum=Math.round((cum+days[d])*100)/100; peak=Math.max(peak,cum); const x=cum-peak; if(x<mdd){mdd=x;mddDay=d;} series.push(cum); dd.push(x); });
-  let streak=0,maxStreak=0; closedPn.forEach(x=>{ if(x<=0){streak++;maxStreak=Math.max(maxStreak,streak);} else streak=0; });
+  // Longest winning & losing streaks in consecutive trading days (ignoring Sat/Sun with no trades: e.g. Fri -> Mon -> Tue = 3 days)
+  const isConsecTradingDay = (prevStr, curStr) => {
+    if(!prevStr || !curStr || curStr <= prevStr) return false;
+    let probe = addDays(prevStr, 1), guard = 0;
+    while(probe < curStr && guard < 14){
+      const dow = new Date(probe + 'T00:00:00Z').getUTCDay();
+      if(dow !== 0 && dow !== 6) return false; // a Mon-Fri weekday was skipped with no trade
+      probe = addDays(probe, 1);
+      guard++;
+    }
+    return probe === curStr;
+  };
+  let winStreak=0, maxWinStreak=0, prevWinDay=null;
+  let loseStreak=0, maxLoseStreak=0, prevLoseDay=null;
+  dk.forEach(d => {
+    const v = days[d];
+    if(v > 0){
+      winStreak = (prevWinDay && isConsecTradingDay(prevWinDay, d)) ? winStreak + 1 : 1;
+      prevWinDay = d;
+      maxWinStreak = Math.max(maxWinStreak, winStreak);
+      loseStreak = 0; prevLoseDay = null;
+    } else if(v < 0){
+      loseStreak = (prevLoseDay && isConsecTradingDay(prevLoseDay, d)) ? loseStreak + 1 : 1;
+      prevLoseDay = d;
+      maxLoseStreak = Math.max(maxLoseStreak, loseStreak);
+      winStreak = 0; prevWinDay = null;
+    } else {
+      winStreak = 0; prevWinDay = null;
+      loseStreak = 0; prevLoseDay = null;
+    }
+  });
   const holds=T.filter(t=>t.exitDate===t.date&&t.exitTime&&t.exitTime!=='OPEN').map(t=>{
     const e=toMin(t.exitTime), s=toMin(t.time);
     return (e!==null && s!==null && e>=s)?(e-s):null;
@@ -627,17 +847,20 @@ function metrics(trades, capital, accountId=null){
   const totalPnl = Math.round(pn.reduce((a,b)=>a+b,0) * 100) / 100;
   const totalCharges = Math.round(T.reduce((a,t)=>a+(t.charges||0),0) * 100) / 100;
   const totalNetPnl = Math.round((totalPnl - totalCharges) * 100) / 100;
+  const intradayCount = T.filter(t=>t.product!=='NRML'&&(t.exitDate||t.date)===t.date).length;
+  const carryFwdCount = T.length - intradayCount;
   return {
     n:T.length, total:totalPnl, netTotal:totalNetPnl, accuracy: closedT.length? wins.length/closedT.length*100 : NaN,
     rr: (wins.length&&loss.length)? (sw/wins.length)/(sl/loss.length) : NaN,
-    pf: sl? sw/sl : (sw?Infinity:NaN), mdd:-mdd, mddPct: capital? -mdd/capital*100 : NaN, mddDay,
+    mdd:-mdd, mddPct: capital? -mdd/capital*100 : NaN, mddDay,
     tpd: dk.length? T.length/dk.length : 0, days:dk.length,
-    intraday: T.length? T.filter(t=>t.product!=='NRML'&&(t.exitDate||t.date)===t.date).length/T.length*100 : NaN,
+    intraday: T.length? intradayCount/T.length*100 : NaN,
+    intradayCount, carryFwdCount,
     manual: T.length? T.filter(t=>t.source==='Manual').length/T.length*100 : NaN,
     ruleFollow: T.length? clean/T.length*100 : NaN, high, flagsN,
     best: dv.length? Math.max(...dv):0, worst: dv.length? Math.min(...dv):0,
     bestDay: dk[dv.indexOf(Math.max(...dv))], worstDay: dk[dv.indexOf(Math.min(...dv))],
-    streak:maxStreak, hold: holds.length? holds.reduce((a,b)=>a+b,0)/holds.length : NaN,
+    winStreak:maxWinStreak, streak:maxLoseStreak, hold: holds.length? holds.reduce((a,b)=>a+b,0)/holds.length : NaN,
     charges: totalCharges, dayKeys:dk, dayVals:dv, dayMeta, series, dd, grossWin:sw, grossLoss:sl
   };
 }
@@ -721,7 +944,6 @@ function scorecard(t){
     {k:'Max drawdown', must:'≤ '+P.maxDDpct+'% of capital', val:pct(m.mddPct,1)+' ('+inr(m.mdd)+')', ok:m.mddPct<=P.maxDDpct},
     {k:'Accuracy', must:'≥ '+P.accuracy+'%', val:pct(m.accuracy,1), ok:m.accuracy>=P.accuracy},
     {k:'Risk : Reward', must:'≥ 1 : '+P.rr, val:isFinite(m.rr)?'1 : '+m.rr.toFixed(2):'—', ok:m.rr>=P.rr},
-    {k:'Profit factor', must:'≥ '+P.pf, val:isFinite(m.pf)?m.pf.toFixed(2):'—', ok:m.pf>=P.pf},
   ];
   const miss=checks.filter(c=>!c.ok).length, day=testDay(t), total=S.settings.testDays+(t.extended?S.settings.extendDays:0);
   const done = day>=total;
@@ -1221,18 +1443,54 @@ V.rules = () => {
       <label class="f">Hedge required ${opt('hedge',['false','true'])}</label>
     </div>
     ${canEdit()?`<div class="row" style="margin-top:14px;flex-wrap:wrap;gap:8px"><button class="btn pri" onclick="saveRules()">Save rules</button><button class="btn" type="button" onclick="undoRuleEdits()">Undo changes</button><button class="btn danger" type="button" onclick="deleteAllRulesForAccount()">Delete all rules</button><span class="muted" style="font-size:12px">Click ✕ on any rule to turn it off, then Save — red flags for removed rules will be cleared.</span></div>`:`<div class="note" style="margin-top:12px">Viewer role — read only.</div>`}
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(148,163,184,0.22)">
+      <h3 style="margin-bottom:8px">Custom rules <small>write your own rule in simple English</small></h3>
+      ${(Array.isArray(r.customRules)&&r.customRules.length)?`<div style="margin-bottom:12px">${r.customRules.map((cr,i)=>{
+        const pr = parseCustomRule(cr.text);
+        return `<div class="row" style="justify-content:space-between;padding:8px 10px;margin-bottom:6px;border-radius:10px;background:#f8fafc;gap:8px">
+          <div style="min-width:0;flex:1">
+            <div style="font-weight:600;font-size:13.5px">${esc(cr.text)} ${levelPill(cr.level||'Medium')}</div>
+            <div style="font-size:11.5px;margin-top:2px" class="${pr.ok?'pos':'amb'}">${pr.ok?'✓ Understood: '+esc(pr.summary):'⚠ Could not match a known condition — check the hint below'}</div>
+          </div>
+          ${canEdit()?`<button type="button" class="btn sm danger" style="padding:2px 7px;font-size:11px" onclick="removeCustomRule(${i})" title="Remove custom rule">✕</button>`:''}
+        </div>`;
+      }).join('')}</div>`:`<div class="muted" style="font-size:12.5px;margin-bottom:10px">No custom rules added yet.</div>`}
+      ${canEdit()?`
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="r_newCustom" type="text" placeholder="e.g. No trading after 2:30 pm  or  Stop after 2 consecutive losses" style="flex:1;min-width:220px" oninput="previewCustomRuleInput()">
+          <select id="r_newCustomLevel" style="width:110px"><option value="High">High</option><option value="Medium" selected>Medium</option><option value="Low">Low</option></select>
+          <button type="button" class="btn pri" onclick="addCustomRule()">+ Create rule</button>
+        </div>
+        <div id="r_newCustomPreview" style="font-size:12px;margin-top:6px;min-height:18px"></div>
+        <div class="note" style="margin-top:8px;font-size:12px;line-height:1.55">
+          <b>How to write a rule (simple English + trading terms):</b><br>
+          • <b>Instruments &amp; Options:</b> <code>No BankNifty</code>, <code>Only Nifty</code>, <code>No CE</code>, <code>Only PE</code>, <code>No option selling</code>, <code>No futures</code>, <code>Equity only</code><br>
+          • <b>Expiry &amp; Strikes:</b> <code>No expiry day</code>, <code>No 0DTE</code>, <code>Monthly expiry only</code>, <code>No OTM</code>, <code>Only ATM</code>, <code>No deep OTM</code>, <code>Max 2 strikes OTM</code><br>
+          • <b>Time &amp; Holding:</b> <code>No entry after 2:30 pm</code>, <code>No trade before 9:30 am</code>, <code>No trading in first 15 min</code>, <code>Exit before 3:15 pm</code>, <code>Min hold 5 min</code>, <code>No scalping</code>, <code>No BTST</code><br>
+          • <b>Risk &amp; Discipline:</b> <code>Max 3 lots</code>, <code>Max 150 qty</code>, <code>Max 4 trades per day</code>, <code>Stop after 2 consecutive losses</code>, <code>No revenge trading</code>, <code>Max loss 5000 per trade</code>, <code>Stop after 10k loss</code>, <code>Stop after 20k profit</code>, <code>No naked selling</code>
+        </div>
+      `:''}
+    </div>
   </div>
   <div><div class="card"><h3>In plain words</h3>${ruleSummary(r).map(x=>`<div style="padding:5px 0;border-bottom:1px solid #d1d5db">${x}</div>`).join('')}</div>
   <div class="card" style="margin-top:14px"><h3>Change history</h3>${log.map(l=>`<div style="padding:6px 0;border-bottom:1px solid #d1d5db;font-size:12.5px"><span class="mono muted">${l.at}</span> · <b>${esc(l.by)}</b><br>${esc(l.change)}</div>`).join('')||'<span class="muted">No changes yet</span>'}</div></div></div>`;
 };
-function ruleSummary(r){ return [
-  `Instrument: <b>${r.instrument||'ANY'}</b> · ${r.expiry||'ANY'} expiry`,
-  `Strike: <b>${!r.strikeMode||r.strikeMode==='ANY'?'any':r.strikeMode==='ATM'?'ATM only':'Only '+r.strikeDist+' strike '+r.strikeMode}</b>`,
-  `Trade type: <b>${!r.side||r.side==='ANY'?'buy or sell':r.side==='BUY'?'buying only':'selling only'}</b>, <b>${r.product==='MIS'?'intraday only — no carry forward':'carry forward allowed'}</b>`,
-  `Entry time: <b>${r.timeFrom||'Any'} to ${r.timeTo||'Any'}</b>`,
-  `Max <b>${+r.maxTradesDay>0?r.maxTradesDay:'Unlimited'}</b> trades/day · max <b>${+r.maxLots>0?r.maxLots:'Unlimited'}</b> lots/trade`,
-  `Stop-loss: max <b>${+r.slPerLot>0?inr(+r.slPerLot):'Off'}</b> per lot · daily loss <b>${+r.dailyLoss>0?inr(+r.dailyLoss):'Off'}</b> → stop for the day`,
-  `Placed by: <b>${!r.source||r.source==='ANY'?'manual or algo':r.source}</b>${String(r.hedge)==='true'?' · <b>hedge required</b>':''}` ]; }
+function ruleSummary(r){
+  const base = [
+    `Instrument: <b>${r.instrument||'ANY'}</b> · ${r.expiry||'ANY'} expiry`,
+    `Strike: <b>${!r.strikeMode||r.strikeMode==='ANY'?'any':r.strikeMode==='ATM'?'ATM only':'Only '+r.strikeDist+' strike '+r.strikeMode}</b>`,
+    `Trade type: <b>${!r.side||r.side==='ANY'?'buy or sell':r.side==='BUY'?'buying only':'selling only'}</b>, <b>${r.product==='MIS'?'intraday only — no carry forward':'carry forward allowed'}</b>`,
+    `Entry time: <b>${r.timeFrom||'Any'} to ${r.timeTo||'Any'}</b>`,
+    `Max <b>${+r.maxTradesDay>0?r.maxTradesDay:'Unlimited'}</b> trades/day · max <b>${+r.maxLots>0?r.maxLots:'Unlimited'}</b> lots/trade`,
+    `Stop-loss: max <b>${+r.slPerLot>0?inr(+r.slPerLot):'Off'}</b> per lot · daily loss <b>${+r.dailyLoss>0?inr(+r.dailyLoss):'Off'}</b> → stop for the day`,
+    `Placed by: <b>${!r.source||r.source==='ANY'?'manual or algo':r.source}</b>${String(r.hedge)==='true'?' · <b>hedge required</b>':''}`
+  ];
+  (Array.isArray(r.customRules)?r.customRules:[]).forEach(cr=>{
+    const pr = parseCustomRule(cr.text);
+    base.push(`Custom: <b>${esc(cr.text)}</b>${pr.ok?' <span class="muted">('+esc(pr.summary)+')</span>':''}`);
+  });
+  return base;
+}
 
 function toggleTradeSort(col){
   const cur = SEL.tradeSort || {col:null, dir:'asc'};
@@ -1283,7 +1541,7 @@ V.trades = () => {
     ${canEdit()?`<td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" class="trade-chk" value="${t.id}" ${isSel?'checked':''} onchange="onTradeChkChange(this)"></td>`:''}
     <td class="mono">${fmtDate(t.date)} ${esc(t.time||'')}</td>
     <td class="mono">${fmtDate(t.exitDate||t.date)} ${esc(t.exitTime||'')}</td>
-    <td>${esc(account(t.account)?.name||t.account)}</td>
+    <td>${(()=>{ const accObj=account(t.account); const nm=accObj?.name; return nm && nm!==t.account ? `${esc(nm)} <span class="muted mono" style="font-size:11px">(${esc(t.account)})</span>` : esc(t.account||'—'); })()}</td>
     <td class="n ${cls(np)}">${inr(np)}</td>
     <td>${esc(t.symbol)} ${t.strike||''} ${esc(t.opt||'')}</td>
     <td class="mono">${esc(expLbl)}</td>
@@ -1442,8 +1700,8 @@ V.report = () => {
       <div class="card">
         <h3>All the numbers</h3>
         <table class="checklist">
-          ${[['Profit factor',isFinite(mAll.pf)?mAll.pf.toFixed(2):(mAll.grossWin>0&&!mAll.grossLoss?'∞ (All wins)':'—')],['Total win / total loss',inr(mAll.grossWin)+' / '+inr(mAll.grossLoss)],['Best day',mAll.bestDay?inr(mAll.best)+' · '+fmtDate(mAll.bestDay):'—'],['Worst day',mAll.worstDay?inr(mAll.worst)+' · '+fmtDate(mAll.worstDay):'—'],
-            ['Longest losing streak',(mAll.streak||0)+' trades'],['Avg holding time',isFinite(mAll.hold)?Math.round(mAll.hold)+' min':'—'],['Intraday vs carry fwd',pct(mAll.intraday)+' / '+pct(100-mAll.intraday)],['Manual vs algo',pct(mAll.manual)+' / '+pct(100-mAll.manual)],['Charges paid',inr(mAll.charges)],['Test capital',inr(t.testCapital)]]
+          ${[['Total win / total loss',inr(mAll.grossWin)+' / '+inr(mAll.grossLoss)],['Best day',mAll.bestDay?inr(mAll.best)+' · '+fmtDate(mAll.bestDay):'—'],['Worst day',mAll.worstDay?inr(mAll.worst)+' · '+fmtDate(mAll.worstDay):'—'],
+            ['Longest winning streak',(mAll.winStreak||0)+' '+((mAll.winStreak||0)===1?'day':'days')],['Longest losing streak',(mAll.streak||0)+' '+((mAll.streak||0)===1?'day':'days')],['Avg holding time',isFinite(mAll.hold)?Math.round(mAll.hold)+' min':'—'],['Intraday vs carry fwd',(mAll.intradayCount||0)+' / '+(mAll.carryFwdCount||0)],['Manual vs algo',pct(mAll.manual)+' / '+pct(100-mAll.manual)]]
             .map(([a,b])=>`<tr><td class="muted">${a}</td><td class="mono">${b}</td></tr>`).join('')}
         </table>
       </div>
@@ -1655,7 +1913,7 @@ function openCalendarDay(dateStr){
         return `<tr class="click" onclick="openTrade('${x.id}')">
           <td class="mono">${fmtDate(x.date)} ${esc(x.time||'')}</td>
           <td class="mono">${fmtDate(x.exitDate||x.date)} ${esc(x.exitTime||'')}</td>
-          <td>${esc(account(x.account)?.name||x.account)}</td>
+          <td>${(()=>{ const accObj=account(x.account); const nm=accObj?.name; return nm && nm!==x.account ? `${esc(nm)} <span class="muted mono" style="font-size:11px">(${esc(x.account)})</span>` : esc(x.account||'—'); })()}</td>
           <td class="n ${cls(np)}">${inr(np)}</td>
           <td>${esc(x.symbol)} ${x.strike||''} ${esc(x.opt||'')}</td>
           <td class="mono">${esc(expLbl)}</td>
@@ -1763,17 +2021,17 @@ function drawReportCharts(m, trades=[], isDay=false){
 V.compare = () => {
   const C=SEL.cmp;
   let rows=S.traders.filter(t=>(!C.status||t.status===C.status)&&(!C.style||t.style===C.style)&&(!C.hold||t.holding===C.hold)).map(t=>{ const sc=scorecard(t); return {t,sc,m:sc.m}; });
-  const key={ruleFollow:r=>r.m.ruleFollow,total:r=>r.m.total,accuracy:r=>r.m.accuracy,rr:r=>r.m.rr,mddPct:r=>-r.m.mddPct,pf:r=>r.m.pf}[C.sort];
+  const key={ruleFollow:r=>r.m.ruleFollow,total:r=>r.m.total,accuracy:r=>r.m.accuracy,rr:r=>r.m.rr,mddPct:r=>-r.m.mddPct}[C.sort] || (r=>r.m.ruleFollow);
   rows.sort((a,b)=>(key(b)||-1e9)-(key(a)||-1e9));
   const sel=(id,v,opts)=>`<select id="${id}">${opts.map(([val,l])=>`<option value="${val}" ${v===val?'selected':''}>${l}</option>`).join('')}</select>`;
   return header('Compare traders','All traders on one board — same test, same rules, fair comparison','<button class="btn" onclick="exportCSV(\'compare\')">Export CSV</button>') +
-  `<div class="card" style="margin-bottom:14px"><div class="row">Sort ${sel('cSort',C.sort,[['ruleFollow','Rule-follow'],['total','P&L'],['accuracy','Accuracy'],['rr','Risk:Reward'],['pf','Profit factor'],['mddPct','Lowest drawdown']])}
+  `<div class="card" style="margin-bottom:14px"><div class="row">Sort ${sel('cSort',C.sort,[['ruleFollow','Rule-follow'],['total','P&L'],['accuracy','Accuracy'],['rr','Risk:Reward'],['mddPct','Lowest drawdown']])}
     ${sel('cStatus',C.status,[['','All status'],['Testing','Testing'],['Live','Live'],['Watch','On watch'],['Stopped','Stopped']])}
     ${sel('cStyle',C.style,[['','Manual / Algo'],['Manual','Manual'],['Algo','Algo']])}${sel('cHold',C.hold,[['','Intraday / CF'],['Intraday','Intraday'],['Carry forward','Carry forward']])}
     <span class="muted" style="font-size:12px">Numbers are for each trader's test window.</span></div></div>
-  <div class="card"><table><tr><th>Trader</th><th>Status</th><th class="n">Days</th><th class="n">P&L</th><th class="n">Accuracy</th><th class="n">RR</th><th class="n">Max DD</th><th class="n">Profit factor</th><th class="n">Rule-follow</th><th class="n">High flags</th><th>Result</th></tr>
+  <div class="card"><table><tr><th>Trader</th><th>Status</th><th class="n">Days</th><th class="n">P&L</th><th class="n">Accuracy</th><th class="n">RR</th><th class="n">Max DD</th><th class="n">Rule-follow</th><th class="n">High flags</th><th>Result</th></tr>
   ${rows.map(({t,sc,m})=>`<tr class="click" onclick="openReport('${t.id}')"><td><b>${esc(t.name)}</b> <span class="muted">${t.style} · ${t.holding}</span></td><td>${statusPill(t.status)}</td><td class="n">${sc.day}</td>
-    <td class="n ${cls(m.total)}">${inrS(m.total)}</td><td class="n">${pct(m.accuracy)}</td><td class="n">${isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—'}</td><td class="n">${pct(m.mddPct)}</td><td class="n">${isFinite(m.pf)?m.pf.toFixed(2):'—'}</td>
+    <td class="n ${cls(m.total)}">${inrS(m.total)}</td><td class="n">${pct(m.accuracy)}</td><td class="n">${isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—'}</td><td class="n">${pct(m.mddPct)}</td>
     <td class="n">${pct(m.ruleFollow)}</td><td class="n">${m.high}</td><td>${resultPill(sc.done?sc.result:'Testing')}</td></tr>`).join('')}</table>
   <div class="muted" style="font-size:12px;margin-top:10px">Click any trader → opens his full report card and red flag history.</div></div>`;
 };
@@ -1781,7 +2039,7 @@ V.compare = () => {
 V.scorecard = () => {
   const P=S.settings.pass, dis=canEdit()?'':'disabled';
   return header('30-day scorecard','Small money first. Big money only after proof. Pass, watch or fail — decided by numbers.') +
-  `<div class="grid c21"><div class="card" style="min-width:0"><h3>Result per trader</h3><div class="tbl-wrap"><table><tr><th>Trader</th><th>Test day</th>${['Rule-follow','High flags','Max DD','Accuracy','RR','PF'].map(h=>`<th>${h}</th>`).join('')}<th>Misses</th><th>Result</th><th></th></tr>
+  `<div class="grid c21"><div class="card" style="min-width:0"><h3>Result per trader</h3><div class="tbl-wrap"><table><tr><th>Trader</th><th>Test day</th>${['Rule-follow','High flags','Max DD','Accuracy','RR'].map(h=>`<th>${h}</th>`).join('')}<th>Misses</th><th>Result</th><th></th></tr>
     ${S.traders.map(t=>{ const sc=scorecard(t); return `<tr><td><b>${esc(t.name)}</b><div>${statusPill(t.status)}</div></td><td class="mono">${sc.day}/${sc.total}</td>
       ${sc.checks.map(c=>`<td title="${c.must}" class="${c.ok?'pos':'neg'}" style="font-size:12.5px">${c.ok?'✓':'✗'} <span class="mono">${String(c.val).split(' (')[0]}</span></td>`).join('')}
       <td class="n">${sc.miss}</td><td>${resultPill(sc.result)}${sc.done?'':'<div class="muted" style="font-size:11px">provisional</div>'}</td>
@@ -1792,7 +2050,7 @@ V.scorecard = () => {
      <div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr))">
       <label class="f">Rule-follow ≥ %<input id="p_ruleFollow" type="number" value="${P.ruleFollow}" ${dis}></label><label class="f">High red flags ≤<input id="p_highFlags" type="number" value="${P.highFlags}" ${dis}></label>
       <label class="f">Max drawdown ≤ % capital<input id="p_maxDDpct" type="number" value="${P.maxDDpct}" ${dis}></label><label class="f">Accuracy ≥ %<input id="p_accuracy" type="number" value="${P.accuracy}" ${dis}></label>
-      <label class="f">Risk : Reward ≥ 1 :<input id="p_rr" type="number" step="0.1" value="${P.rr}" ${dis}></label><label class="f">Profit factor ≥<input id="p_pf" type="number" step="0.1" value="${P.pf}" ${dis}></label>
+      <label class="f">Risk : Reward ≥ 1 :<input id="p_rr" type="number" step="0.1" value="${P.rr}" ${dis}></label>
       <label class="f">Test length (trading days)<input id="s_testDays" type="number" value="${S.settings.testDays}" ${dis}></label><label class="f">Watch extension (days)<input id="s_extendDays" type="number" value="${S.settings.extendDays}" ${dis}></label>
      </div><label class="f" style="margin-top:12px">Big capital steps<input id="s_capitalSteps" value="${esc(S.settings.capitalSteps)}" ${dis}></label>
      ${canEdit()?`<button class="btn pri" style="margin-top:12px" onclick="savePass()">Save pass rules</button>`:''}</div></div>
@@ -1805,7 +2063,7 @@ V.groups = () => {
   const g=S.groups.find(x=>x.id===SEL.group)||S.groups[0];
   const R=SEL.gRange, from = R==='today'?TODAY : R==='week'?addDays(TODAY,-6) : R==='month'?TODAY.slice(0,8)+'01' : R==='custom'?SEL.from : '';
   const to = R==='custom'?SEL.to:TODAY;
-  const rows=(g?.accounts||[]).map(aid=>{ const a=account(aid); const tr=S.trades.filter(t=>t.account===aid&&(!from||t.date>=from)&&t.date<=to); return {a, n:tr.length, pnl:tr.reduce((s,t)=>s+tradePnl(t),0), ch:tr.reduce((s,t)=>s+t.charges,0)}; });
+  const rows=(g?.accounts||[]).map(aid=>{ const a=account(aid); const tr=S.trades.filter(t=>t.account===aid&&(!from||t.date>=from)&&t.date<=to); return {a, aid, n:tr.length, pnl:tr.reduce((s,t)=>s+tradePnl(t),0), ch:tr.reduce((s,t)=>s+t.charges,0)}; });
   const tot=rows.reduce((s,r)=>s+r.pnl,0), mx=Math.max(1,...rows.map(r=>Math.abs(r.pnl)));
   return header('Account groups','Select a group, see every account\'s P&L and the total. One account can be in many groups (by RA, dealer, trader, client).',
     `<select id="gSel">${S.groups.map(x=>`<option value="${x.id}" ${x.id===g?.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select>${canEdit()?`<button class="btn" onclick="editGroup('${g?.id||''}')">Edit group</button><button class="btn pri" onclick="editGroup()">+ New group</button>`:''}`) +
@@ -1813,11 +2071,11 @@ V.groups = () => {
     ${R==='custom'?`<input type="date" id="gFrom" value="${SEL.from}"><input type="date" id="gTo" value="${SEL.to}"><button class="btn sm" onclick="SEL.from=$('#gFrom').value;SEL.to=$('#gTo').value;render()">Go</button>`:''}
     <div style="flex:1"></div><button class="btn sm" onclick="exportCSV('group')">Export CSV</button></div></div>
   ${g?`<div class="grid c21"><div class="card"><h3>${esc(g.name)} · P&L by account</h3>
-    ${rows.map(r=>`<div class="row" style="margin:10px 0"><div style="width:170px">${esc(r.a?.name||'?')} <span class="muted">· ${esc(trader(r.a?.trader)?.name||'')}</span></div>
+    ${rows.map(r=>`<div class="row" style="margin:10px 0"><div style="width:210px">${esc(r.a?.name||'?')} <span class="muted mono">· ${esc(r.a?.id||r.aid||'')}</span></div>
       <div style="flex:1"><div class="bar" style="height:14px"><i style="width:${Math.abs(r.pnl)/mx*100}%;background:${r.pnl>=0?'var(--green)':'var(--red)'}"></i></div></div>
       <div class="mono ${cls(r.pnl)}" style="width:130px;text-align:right">${inrS(r.pnl)}${r.pnl<0?' <span class="muted">(loss)</span>':''}</div></div>`).join('')}
-    <div class="row" style="border-top:1px solid var(--line);padding-top:12px;margin-top:8px"><b style="width:170px">Group total</b><div style="flex:1"></div><b class="mono ${cls(tot)}" style="font-size:18px">${inrS(tot)}</b></div></div>
-    <div class="card"><h3>Accounts in this group</h3><table><tr><th>Account</th><th>Broker</th><th class="n">Trades</th></tr>${rows.map(r=>`<tr><td>${esc(r.a?.name)} · ${esc(trader(r.a?.trader)?.name||'')}</td><td>${esc(r.a?.broker)}</td><td class="n">${r.n}</td></tr>`).join('')}</table></div></div>`:'<div class="card">No groups yet.</div>'}`;
+    <div class="row" style="border-top:1px solid var(--line);padding-top:12px;margin-top:8px"><b style="width:210px">Group total</b><div style="flex:1"></div><b class="mono ${cls(tot)}" style="font-size:18px">${inrS(tot)}</b></div></div>
+    <div class="card"><h3>Accounts in this group</h3><table><tr><th>Account</th><th>Broker</th><th class="n">Trades</th></tr>${rows.map(r=>`<tr><td>${esc(r.a?.name||'?')} <span class="muted mono">· ${esc(r.a?.id||r.aid||'')}</span></td><td>${esc(r.a?.broker)}</td><td class="n">${r.n}</td></tr>`).join('')}</table></div></div>`:'<div class="card">No groups yet.</div>'}`;
 };
 
 V.settings = () => {
@@ -2585,8 +2843,56 @@ async function refreshLive(){
 
 const NO_RULES = {
   instrument:'ANY', expiry:'ANY', strikeMode:'ANY', strikeDist:0, side:'ANY', product:'ANY',
-  timeFrom:'', timeTo:'', maxTradesDay:0, maxLots:0, slPerLot:0, dailyLoss:0, hedge:false, source:'ANY'
+  timeFrom:'', timeTo:'', maxTradesDay:0, maxLots:0, slPerLot:0, dailyLoss:0, hedge:false, source:'ANY', customRules:[]
 };
+function previewCustomRuleInput(){
+  const txt = (val('r_newCustom') || '').trim();
+  const box = document.getElementById('r_newCustomPreview');
+  if(!box) return;
+  if(!txt){ box.innerHTML = ''; return; }
+  const pr = parseCustomRule(txt);
+  box.innerHTML = pr.ok
+    ? `<span class="pos">✓ Understood as: <b>${esc(pr.summary)}</b></span>`
+    : `<span class="amb">⚠ Try phrasing like "No BankNifty", "Max 3 lots", "No entry after 2:30 pm", or "Stop after 2 consecutive losses"</span>`;
+}
+function addCustomRule(){
+  let id = SEL.trader;
+  if(!trader(id) && !account(id) && !S.accounts.some(a=>a.zebu_uid===id) && S.traders && S.traders.length){ id = S.traders[0].id; SEL.trader = id; }
+  const text = (val('r_newCustom') || '').trim();
+  if(!text){ toast('Please write a rule first'); return; }
+  const pr = parseCustomRule(text);
+  if(!pr.ok){ toast('Could not understand rule — check the hint examples below'); return; }
+  const level = val('r_newCustomLevel') || 'Medium';
+  const cur = S.rules[id] ? {...S.rules[id]} : {...DEFAULT_RULES};
+  const list = Array.isArray(cur.customRules) ? [...cur.customRules] : [];
+  list.push({ id: uid('CR-'), text, level });
+  cur.customRules = list;
+  const relIds = relatedRuleIds(id);
+  relIds.forEach(rid => { S.rules[rid] = {...cur}; });
+  const change = `Added custom rule: "${text}" (${pr.summary})`;
+  S.ruleLog.push({trader:id, at:TODAY+' '+new Date().toTimeString().slice(0,5), by:USER, change});
+  invalidate(); save();
+  liveCall(async () => { await Promise.all(relIds.map(rid => API.saveRules(rid, cur, change))); });
+  render();
+  toast('Custom rule created & active');
+}
+function removeCustomRule(idx){
+  let id = SEL.trader;
+  if(!trader(id) && !account(id) && !S.accounts.some(a=>a.zebu_uid===id) && S.traders && S.traders.length){ id = S.traders[0].id; SEL.trader = id; }
+  const cur = S.rules[id] ? {...S.rules[id]} : {...DEFAULT_RULES};
+  const list = Array.isArray(cur.customRules) ? [...cur.customRules] : [];
+  if(idx < 0 || idx >= list.length) return;
+  const removed = list.splice(idx, 1)[0];
+  cur.customRules = list;
+  const relIds = relatedRuleIds(id);
+  relIds.forEach(rid => { S.rules[rid] = {...cur}; });
+  const change = `Removed custom rule: "${removed.text}"`;
+  S.ruleLog.push({trader:id, at:TODAY+' '+new Date().toTimeString().slice(0,5), by:USER, change});
+  invalidate(); save();
+  liveCall(async () => { await Promise.all(relIds.map(rid => API.saveRules(rid, cur, change))); });
+  render();
+  toast('Custom rule removed');
+}
 function clearRuleField(k){
   const el = document.getElementById('r_' + k);
   if(!el) return;
@@ -2645,7 +2951,8 @@ function saveRules(){
   }
   const old=S.rules[id]||{}, r={};
   Object.keys(DEFAULT_RULES).forEach(k=>{ let v=val('r_'+k); if(['strikeDist','maxTradesDay','maxLots','slPerLot','dailyLoss'].includes(k)) v=Number(v)||0; if(k==='hedge') v=v==='true'; r[k]=v; });
-  const ch=Object.keys(r).filter(k=>String(r[k])!==String(old[k])).map(k=>`${k}: ${old[k]} → ${r[k]}`);
+  r.customRules = Array.isArray(old.customRules) ? [...old.customRules] : [];
+  const ch=Object.keys(DEFAULT_RULES).filter(k=>String(r[k])!==String(old[k])).map(k=>`${k}: ${old[k]} → ${r[k]}`);
   if(!ch.length){ toast('No changes'); return; }
   const relIds = relatedRuleIds(id);
   relIds.forEach(rid => { S.rules[rid] = {...r}; });
@@ -2855,7 +3162,7 @@ function doImport(){
   toast(`Imported ${out.length} trades · ${nf} with red flags`);
 }
 function applyTF(){ SEL.tradeFilter={trader:val('tfTr'),flag:val('tfFlag'),from:val('tfFrom'),to:val('tfTo')}; render(); }
-function savePass(){ const P=S.settings.pass; Object.keys(P).forEach(k=>P[k]=+val('p_'+k)); S.settings.testDays=+val('s_testDays'); S.settings.extendDays=+val('s_extendDays'); S.settings.capitalSteps=val('s_capitalSteps'); save(); liveCall(()=>API.req('/settings',{method:'PUT',body:JSON.stringify(S.settings)})); render(); toast('Pass rules saved'); }
+function savePass(){ const P=S.settings.pass; delete P.pf; Object.keys(P).forEach(k=>{ const v=val('p_'+k); if(v!==undefined) P[k]=+v; }); S.settings.testDays=+val('s_testDays'); S.settings.extendDays=+val('s_extendDays'); S.settings.capitalSteps=val('s_capitalSteps'); save(); liveCall(()=>API.req('/settings',{method:'PUT',body:JSON.stringify(S.settings)})); render(); toast('Pass rules saved'); }
 function applyResult(id){
   const t=trader(id), sc=scorecard(t);
   modal(`<h2>Apply result for ${esc(t.name)}: ${resultPill(sc.result)}</h2><p>${sc.miss} check(s) missed. ${sc.done?'':'<b class="amb">Test is not finished yet (day '+sc.day+' of '+sc.total+').</b>'}</p>
@@ -2866,7 +3173,7 @@ function confirmResult(id,r){ const t=trader(id); if(r==='Pass') t.status='Live'
 function editGroup(id){
   const g=id?S.groups.find(x=>x.id===id):{id:uid('G-'),name:'',accounts:[]};
   modal(`<h2>${id?'Edit':'New'} group</h2><label class="f">Group name (RA, dealer, trader, client…)<input id="g_name" value="${esc(g.name)}"></label>
-   <div style="margin-top:12px">${S.accounts.map(a=>`<label style="display:flex;gap:8px;padding:5px 0"><input type="checkbox" class="g_acc" value="${a.id}" ${g.accounts.includes(a.id)?'checked':''}> ${esc(a.name)} · ${esc(trader(a.trader)?.name||'')} · <span class="muted">${a.broker}</span></label>`).join('')}</div>
+   <div style="margin-top:12px">${S.accounts.map(a=>`<label style="display:flex;gap:8px;padding:5px 0"><input type="checkbox" class="g_acc" value="${a.id}" ${g.accounts.includes(a.id)?'checked':''}> ${esc(a.name)} · <span class="mono">${esc(a.id)}</span> · <span class="muted">${a.broker}</span></label>`).join('')}</div>
    <div class="row" style="margin-top:16px;justify-content:flex-end">${id?`<button class="btn danger" onclick="delGroup('${id}')">Delete</button>`:''}<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveGroup('${g.id}',${id?'true':'false'})">Save</button></div>`);
 }
 function saveGroup(id,exists){ const g={id,name:val('g_name')||'Group',accounts:[...document.querySelectorAll('.g_acc:checked')].map(x=>x.value)}; if(exists) Object.assign(S.groups.find(x=>x.id===id),g); else S.groups.push(g); SEL.group=id; save(); liveCall(()=>API.saveGroup(g)); closeModal(); render(); }
@@ -2890,7 +3197,7 @@ async function exportCSV(kind){
     const trId = curTr ? curTr.id : (SEL.trader || 'trader');
     name=kind==='report'?'report_'+trId+'.csv':'compare_traders.csv';
     const list=kind==='report'?(curTr?[curTr]:[]):S.traders;
-    rows=[['trader','status','test day','pnl','accuracy','rr','max dd','max dd %','profit factor','rule-follow','high flags','trades/day','intraday %','manual %','result'],...list.map(t=>{ const sc=scorecard(t),m=sc.m; return [t.name,t.status,sc.day,m.total.toFixed(0),m.accuracy.toFixed(1),(m.rr||0).toFixed(2),m.mdd.toFixed(0),m.mddPct.toFixed(1),(m.pf||0).toFixed(2),m.ruleFollow.toFixed(1),m.high,m.tpd.toFixed(1),m.intraday.toFixed(0),m.manual.toFixed(0),sc.result]; })]; }
+    rows=[['trader','status','test day','pnl','accuracy','rr','max dd','max dd %','rule-follow','high flags','trades/day','intraday %','manual %','result'],...list.map(t=>{ const sc=scorecard(t),m=sc.m; return [t.name,t.status,sc.day,m.total.toFixed(0),m.accuracy.toFixed(1),(m.rr||0).toFixed(2),m.mdd.toFixed(0),m.mddPct.toFixed(1),m.ruleFollow.toFixed(1),m.high,m.tpd.toFixed(1),m.intraday.toFixed(0),m.manual.toFixed(0),sc.result]; })]; }
   else { const g=S.groups.find(x=>x.id===SEL.group); name='group_'+(g?.name||'').replace(/\W+/g,'_')+'.csv'; rows=[['account','trader','broker','net pnl'],...(g?.accounts||[]).map(a=>{ const ac=account(a); return [ac?.name,trader(ac?.trader)?.name,ac?.broker,S.trades.filter(t=>t.account===a).reduce((s,t)=>s+tradePnl(t),0).toFixed(0)]; })]; }
   const csv=toCSV(rows);
   try{ const dl = window.claude ? await window.claude.use('downloads') : null;
