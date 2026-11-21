@@ -512,21 +512,42 @@ function metrics(trades, capital, accountId=null){
   // Populate from finalized daily reports first if available for this account
   if(LIVE && accountId && DAILY_REPORTS.length){
     const accObj = account(accountId);
-    const matchIds = new Set([accountId, accObj?.id, accObj?.zebu_uid, accObj?.trader].filter(Boolean));
+    const traderAccIds = S.accounts.filter(a => a.trader === accountId).map(a => a.id);
+    const matchIds = new Set([accountId, accObj?.id, accObj?.zebu_uid, accObj?.trader, ...traderAccIds].filter(Boolean));
     DAILY_REPORTS.filter(r => matchIds.has(r.account) || matchIds.has(r.trader)).forEach(r => {
       if(r.status === 'FINALIZED' || r.status === 'ARCHIVED'){
-        if(r.closed_trades > 0 || r.realized_pnl !== 0){
-          days[r.date] = Number(r.realized_pnl || 0);
-          dayMeta[r.date] = {
-            realized_pnl: Number(r.realized_pnl || 0),
-            net_pnl: Number(r.net_pnl || 0),
-            charges: Number(r.charges || 0),
-            trades: Number(r.closed_trades || 0),
-            wins: Number(r.winning_trades || 0),
-            losses: Number(r.losing_trades || 0),
-            status: r.status,
-            finalized_at: r.finalized_at,
-          };
+        const rReal = Number(r.realized_pnl || 0);
+        const rUnrl = Number(r.unrealized_pnl || 0);
+        const rTot = Math.round((rReal + rUnrl) * 100) / 100;
+        const rNet = Number(r.net_pnl || 0);
+        const rChg = Number(r.charges || 0);
+        if(r.closed_trades > 0 || r.open_trades > 0 || rReal !== 0 || rUnrl !== 0){
+          const prev = dayMeta[r.date];
+          if(prev && prev.finalized_at){
+            prev.realized_pnl = Math.round((prev.realized_pnl + rReal) * 100) / 100;
+            prev.unrealized_pnl = Math.round((prev.unrealized_pnl + rUnrl) * 100) / 100;
+            prev.total_pnl = Math.round((prev.realized_pnl + prev.unrealized_pnl) * 100) / 100;
+            prev.net_pnl = Math.round((prev.net_pnl + rNet) * 100) / 100;
+            prev.charges = Math.round((prev.charges + rChg) * 100) / 100;
+            prev.trades += Number(r.closed_trades || 0);
+            prev.wins += Number(r.winning_trades || 0);
+            prev.losses += Number(r.losing_trades || 0);
+            days[r.date] = prev.total_pnl;
+          } else {
+            days[r.date] = rTot;
+            dayMeta[r.date] = {
+              realized_pnl: rReal,
+              unrealized_pnl: rUnrl,
+              total_pnl: rTot,
+              net_pnl: rNet,
+              charges: rChg,
+              trades: Number(r.closed_trades || 0),
+              wins: Number(r.winning_trades || 0),
+              losses: Number(r.losing_trades || 0),
+              status: r.status,
+              finalized_at: r.finalized_at,
+            };
+          }
         }
       }
     });
@@ -537,8 +558,9 @@ function metrics(trades, capital, accountId=null){
       const d = t.exitDate || t.date;
       if(!dayMeta[d] || !dayMeta[d].finalized_at){
         days[d] = Math.round(((days[d]||0) + pn[i]) * 100) / 100;
-        const dm = (dayMeta[d] ||= {realized_pnl:0, net_pnl:0, charges:0, trades:0, wins:0, losses:0, status: t.is_finalized?'FINALIZED':'LIVE'});
+        const dm = (dayMeta[d] ||= {realized_pnl:0, unrealized_pnl:0, total_pnl:0, net_pnl:0, charges:0, trades:0, wins:0, losses:0, status: t.is_finalized?'FINALIZED':'LIVE'});
         dm.realized_pnl = Math.round((dm.realized_pnl + pn[i]) * 100) / 100;
+        dm.total_pnl = Math.round((dm.realized_pnl + dm.unrealized_pnl) * 100) / 100;
         dm.charges = Math.round((dm.charges + Number(t.charges||0)) * 100) / 100;
         dm.net_pnl = Math.round((dm.realized_pnl - dm.charges) * 100) / 100;
         dm.trades += 1;
@@ -1386,54 +1408,213 @@ V.report = () => {
   </div>`;
 };
 function calendar(m){
-  if(!m.dayKeys.length) return '<span class="muted">No trades</span>';
-  const map={}; m.dayKeys.forEach((d,i)=>map[d]=m.dayVals[i]); const mx=Math.max(...m.dayVals.map(Math.abs),1);
+  const map={}; m.dayKeys.forEach((d,i)=>map[d]=m.dayVals[i]);
   const meta=m.dayMeta||{};
-  const first=m.dayKeys[0], last=m.dayKeys[m.dayKeys.length-1];
-  let s=first; while(new Date(s+'T00:00:00Z').getUTCDay()!==1) s=addDays(s,-1);
-  let html='<div class="cal">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="hd">${d}</div>`).join('');
-  for(; s<=last; s=addDays(s,1)){
-    const v=map[s], dm=meta[s];
-    const a=v==null?0:Math.min(1,Math.abs(v)/mx)*.8+.15;
-    if(v==null){
-      html+=`<div style="background:#ffffff;color:#555555;border:1px solid #d1d5db">${s.slice(8)}</div>`;
-    } else {
-      const tip = dm ? `${s} (${dm.status||'FINALIZED'})\nRealized P&L: ${inr(dm.realized_pnl)}\nNet P&L: ${inr(dm.net_pnl)} (Charges: ${inr(dm.charges)})\nTrades: ${dm.trades} (${dm.wins}W / ${dm.losses}L)` : `${s}: ${inr(v)}`;
-      const bg = v>=0 ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
-      const fg = v>=0 ? '#15803d' : '#dc2626';
-      const bd = v>=0 ? '#15803d' : '#dc2626';
-      html+=`<div title="${esc(tip)}" style="cursor:pointer;background:${bg};color:${fg};border:1px solid ${bd};font-weight:700" onclick="openCalendarDay('${s}')"><b>${s.slice(8)}</b>${inrS(v).replace('₹','')}</div>`;
-    }
+  // Include Today's live broker Total P&L if available and not yet locked
+  const t = trader(SEL.trader);
+  const tAccounts = S.accounts.filter(a => a.id === SEL.trader || a.zebu_uid === SEL.trader || a.trader === SEL.trader);
+  const bAccs = tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined);
+  if(bAccs.length && (!meta[TODAY] || !meta[TODAY].finalized_at)){
+    const bRpnl = Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_rpnl||0),0)*100)/100;
+    const bUrm = Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_urmtom||0),0)*100)/100;
+    const bTot = Math.round((bRpnl + bUrm)*100)/100;
+    const existing = meta[TODAY] || { realized_pnl: bRpnl, unrealized_pnl: bUrm, total_pnl: bTot, net_pnl: bRpnl, charges: 0, trades: 0, wins: 0, losses: 0, status: 'LIVE' };
+    meta[TODAY] = { ...existing, total_pnl: bTot, unrealized_pnl: bUrm };
+    map[TODAY] = bTot;
   }
-  return html+'</div>';
+
+  // Span from earliest recorded date (or trader start date) all the way up to TODAY
+  const allDates = [...Object.keys(map), ...(t?.start ? [t.start] : []), TODAY].filter(Boolean).sort();
+  const first = allDates[0] || TODAY;
+  const last = TODAY > allDates[allDates.length-1] ? TODAY : allDates[allDates.length-1];
+
+  // Collect all YYYY-MM months from first to last (newest month first for user-friendly browsing)
+  const months = [];
+  let ym = first.slice(0,7);
+  const endYm = last.slice(0,7);
+  while(ym <= endYm){
+    months.push(ym);
+    const [yy, mm] = ym.split('-').map(Number);
+    const ny = mm === 12 ? yy + 1 : yy;
+    const nm = mm === 12 ? 1 : mm + 1;
+    ym = `${ny}-${String(nm).padStart(2,'0')}`;
+  }
+  months.reverse();
+
+  const selMonth = SEL.calMonth || 'ALL';
+  const visibleMonths = selMonth === 'ALL' ? months : months.filter(x => x === selMonth);
+
+  const monthSelect = `<div class="row" style="margin-bottom:10px;justify-content:space-between;align-items:center">
+    <span class="muted" style="font-size:12px">Showing ${fmtDate(first)} → ${fmtDate(TODAY)} (${months.length} month${months.length===1?'':'s'}) · Click any date for full Trade Log</span>
+    <select style="font-size:12px;padding:4px 8px" onchange="SEL.calMonth=this.value;render()">
+      <option value="ALL" ${selMonth==='ALL'?'selected':''}>All months (${months.length})</option>
+      ${months.map(mo => {
+        const dObj = new Date(mo + '-01T00:00:00Z');
+        const lbl = dObj.toLocaleDateString('en-IN', {month:'short', year:'numeric', timeZone:'UTC'});
+        return `<option value="${mo}" ${selMonth===mo?'selected':''}>${lbl}</option>`;
+      }).join('')}
+    </select>
+  </div>`;
+
+  const monthBlocks = visibleMonths.map(mo => {
+    const [yy, mm] = mo.split('-').map(Number);
+    const monthStart = `${mo}-01`;
+    const lastDayNum = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+    const monthEnd = `${mo}-${String(lastDayNum).padStart(2,'0')}`;
+    const displayEnd = monthEnd > TODAY ? TODAY : monthEnd;
+    const monthLabel = new Date(monthStart + 'T00:00:00Z').toLocaleDateString('en-IN', {month:'long', year:'numeric', timeZone:'UTC'});
+
+    let mTot = 0, mDays = 0;
+    for(let d=1; d<=lastDayNum; d++){
+      const ds = `${mo}-${String(d).padStart(2,'0')}`;
+      if(ds > TODAY) break;
+      if(map[ds] != null){ mTot += Number(map[ds]); mDays++; }
+    }
+    mTot = Math.round(mTot * 100) / 100;
+
+    // Pad leading days to Monday
+    const firstDow = new Date(monthStart + 'T00:00:00Z').getUTCDay(); // 0=Sun..6=Sat
+    const leadBlanks = firstDow === 0 ? 6 : firstDow - 1;
+    let grid = '<div class="cal">' + ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="hd">${d}</div>`).join('');
+    for(let b=0; b<leadBlanks; b++) grid += '<div style="background:transparent;border:0"></div>';
+
+    for(let d=1; d<=lastDayNum; d++){
+      const s = `${mo}-${String(d).padStart(2,'0')}`;
+      if(s > displayEnd) break;
+      const v = map[s], dm = meta[s];
+      const isToday = s === TODAY;
+      if(v == null){
+        grid += `<div title="${s}: No trades" style="cursor:pointer;background:#ffffff;color:#555555;border:${isToday?'2px solid #0284c7':'1px solid #d1d5db'}" onclick="openCalendarDay('${s}')">${String(d).padStart(2,'0')}</div>`;
+      } else {
+        const totVal = dm && dm.total_pnl != null ? dm.total_pnl : v;
+        const netVal = dm ? dm.net_pnl : v;
+        const tip = dm
+          ? `${s} (${dm.status||'FINALIZED'})\nTotal P&L: ${inr(totVal)}\nNet P&L: ${inr(netVal)} (Charges: ${inr(dm.charges||0)})\nTrades: ${dm.trades} (${dm.wins}W / ${dm.losses}L)`
+          : `${s}\nTotal P&L: ${inr(v)}`;
+        const bg = totVal>=0 ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
+        const fg = totVal>=0 ? '#15803d' : '#dc2626';
+        const bd = isToday ? '#0284c7' : (totVal>=0 ? '#15803d' : '#dc2626');
+        grid += `<div title="${esc(tip)}" style="cursor:pointer;background:${bg};color:${fg};border:${isToday?'2px':'1px'} solid ${bd};font-weight:700" onclick="openCalendarDay('${s}')"><b>${String(d).padStart(2,'0')}</b>${inrS(totVal).replace('₹','')}</div>`;
+      }
+    }
+    grid += '</div>';
+    return `<div style="margin-bottom:14px">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px;padding:4px 6px;background:#edf7ff;border:1px solid #333333;border-radius:6px">
+        <b style="font-size:12.5px">${monthLabel}</b>
+        <span style="font-size:12px" class="mono">${mDays} trading day${mDays===1?'':'s'} · Total P&L: <b class="${cls(mTot)}">${inrS(mTot)}</b></span>
+      </div>
+      ${grid}
+    </div>`;
+  }).join('');
+
+  return monthSelect + `<div style="max-height:460px;overflow:auto;padding-right:4px">${monthBlocks}</div>`;
 }
+
+function toggleCalSort(col, dateStr){
+  const cur = SEL.calSort || {col:null, dir:'asc'};
+  SEL.calSort = { col, dir: cur.dir === 'desc' ? 'asc' : 'desc' };
+  openCalendarDay(dateStr);
+}
+
 function openCalendarDay(dateStr){
   const tid = SEL.trader;
   const t = trader(tid);
-  const dayTrades = S.trades.filter(tr => belongsToSelection(tr, tid) && !tr.open && ((tr.exitDate || tr.date) === dateStr));
-  const rep = DAILY_REPORTS.find(r => (r.account === tid || r.trader === tid) && r.date === dateStr);
-  const realized = rep ? Number(rep.realized_pnl || 0) : dayTrades.reduce((s,x)=>s+tradePnl(x),0);
-  const charges = rep ? Number(rep.charges || 0) : dayTrades.reduce((s,x)=>s+Number(x.charges||0),0);
-  const net = rep ? Number(rep.net_pnl || 0) : (realized - charges);
-  const wins = rep ? Number(rep.winning_trades || 0) : dayTrades.filter(x=>tradePnl(x)>0).length;
-  const losses = rep ? Number(rep.losing_trades || 0) : dayTrades.filter(x=>tradePnl(x)<=0).length;
-  const count = rep ? Number(rep.closed_trades || dayTrades.length) : dayTrades.length;
-  const statusBadge = rep?.status ? `<span class="pill ${rep.status==='FINALIZED'||rep.status==='ARCHIVED'?'p-pass':'p-watch'}">${esc(rep.status)}</span>` : '';
+  const {byTrade} = chk();
+  const tAccounts = S.accounts.filter(a => a.id === tid || a.zebu_uid === tid || a.trader === tid);
+  const matchIds = new Set([tid, ...tAccounts.map(a=>a.id), ...tAccounts.map(a=>a.zebu_uid)].filter(Boolean));
+  const reps = DAILY_REPORTS.filter(r => (matchIds.has(r.account) || matchIds.has(r.trader)) && r.date === dateStr);
+  const isLocked = reps.some(r => r.status === 'FINALIZED' || r.status === 'ARCHIVED');
+
+  // Prefer immutable saved trade_details from finalized DailyAccountReport; fallback to S.trades
+  let dayTrades = [];
+  if(isLocked){
+    const snapTrades = reps.flatMap(r => Array.isArray(r.trade_details) ? r.trade_details : []);
+    if(snapTrades.length){
+      dayTrades = snapTrades;
+    }
+  }
+  if(!dayTrades.length){
+    dayTrades = S.trades.filter(tr => belongsToSelection(tr, tid) && !tr.open && ((tr.exitDate || tr.date) === dateStr));
+  }
+
+  // Sort using synchronized increasing/decreasing sort buttons identical to Trade Log
+  const CS = SEL.calSort || {col:null, dir:'asc'};
+  const sortedTrades = [...dayTrades];
+  if(CS.col){
+    const getVal = x => CS.col==='netPnl' ? netTradePnl(x) : CS.col==='points' ? (Number(x.exit||0)-Number(x.entry||0)) : tradePnl(x);
+    sortedTrades.sort((a,b) => CS.dir==='desc' ? (getVal(b)-getVal(a)) : (getVal(a)-getVal(b)));
+  } else {
+    sortedTrades.sort((a,b)=>((b.exitDate||b.date||'')+(b.exitTime||b.time||'')).localeCompare((a.exitDate||a.date||'')+(a.exitTime||a.time||'')));
+  }
+
+  const arrowChar = CS.dir === 'desc' ? '▼' : '▲';
+  const arrowTitle = CS.dir === 'desc' ? 'Click to sort increasing (low to high)' : 'Click to sort decreasing (high to low)';
+  const sortBtn = col => ` <button type="button" class="btn sm" style="padding:1px 5px;font-size:10px;line-height:1.1;margin-left:3px;vertical-align:middle" onclick="toggleCalSort('${col}','${dateStr}')" title="${arrowTitle}">${arrowChar}</button>`;
+
+  const repRealized = reps.reduce((s,r)=>s+Number(r.realized_pnl||0),0);
+  const repUnrealized = reps.reduce((s,r)=>s+Number(r.unrealized_pnl||0),0);
+  const repCharges = reps.reduce((s,r)=>s+Number(r.charges||0),0);
+  const repNet = reps.reduce((s,r)=>s+Number(r.net_pnl||0),0);
+  const repWins = reps.reduce((s,r)=>s+Number(r.winning_trades||0),0);
+  const repLosses = reps.reduce((s,r)=>s+Number(r.losing_trades||0),0);
+  const repClosed = reps.reduce((s,r)=>s+Number(r.closed_trades||0),0);
+
+  let totalPnl, netPnl, charges, wins, losses, count;
+  if(reps.length){
+    totalPnl = Math.round((repRealized + repUnrealized) * 100) / 100;
+    netPnl = Math.round(repNet * 100) / 100;
+    charges = Math.round(repCharges * 100) / 100;
+    wins = repWins;
+    losses = repLosses;
+    count = repClosed || sortedTrades.length;
+  } else {
+    const fifoReal = Math.round(sortedTrades.reduce((s,x)=>s+tradePnl(x),0) * 100) / 100;
+    charges = Math.round(sortedTrades.reduce((s,x)=>s+Number(x.charges||0),0) * 100) / 100;
+    netPnl = Math.round((fifoReal - charges) * 100) / 100;
+    // For Today live view before EOD lock, match Trader Report Total P&L (Broker Total if available)
+    const bAccs = dateStr === TODAY ? tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined) : [];
+    totalPnl = bAccs.length
+      ? Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_rpnl||0)+Number(a.broker_urmtom||0),0) * 100) / 100
+      : fifoReal;
+    wins = sortedTrades.filter(x=>tradePnl(x)>0).length;
+    losses = sortedTrades.filter(x=>tradePnl(x)<=0).length;
+    count = sortedTrades.length;
+  }
+
+  const firstRep = reps[0];
+  const statusStr = firstRep?.status || (dateStr < TODAY ? 'FINALIZED' : 'LIVE');
+  const statusBadge = `<span class="pill ${statusStr==='FINALIZED'||statusStr==='ARCHIVED'?'p-pass':'p-watch'}">${esc(statusStr)}</span>`;
 
   modal(`<h2>Daily P&L Summary · ${fmtDate(dateStr)} (${dateStr}) · ${esc(t?.name || tid)} ${statusBadge}</h2>
     <div class="grid k4">
-      ${kpi('Realized P&L', inr(realized), count + ' closed trades', cls(realized))}
-      ${kpi('Net P&L', inr(net), 'Charges: ' + inr(charges), cls(net))}
+      ${kpi('Total P&L', inr(totalPnl), count + ' closed trades', cls(totalPnl))}
+      ${kpi('Net P&L', inr(netPnl), 'Charges: ' + inr(charges), cls(netPnl))}
       ${kpi('Wins / Losses', `${wins}W / ${losses}L`, count ? pct(wins/count*100,1) + ' win rate' : '—')}
-      ${kpi('Status', rep?.status || (dateStr < TODAY ? 'FINALIZED' : 'LIVE'), rep?.finalized_at ? 'Locked ' + rep.finalized_at.slice(0,16).replace('T',' ') : 'Verified')}
+      ${kpi('Status', statusStr, firstRep?.finalized_at ? 'Immutable · Locked ' + fmtIST(firstRep.finalized_at, true) : (dateStr < TODAY ? 'Immutable record' : 'Live session'))}
     </div>
     <div class="card" style="margin-top:14px">
-      <h3>Trades closed on ${fmtDate(dateStr)}</h3>
-      ${dayTrades.length ? `<div class="tbl-wrap"><table><tr><th>Entry</th><th>Exit</th><th>Account</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Charges</th><th class="n">Realized P&L</th><th class="n">Net P&L</th></tr>
-        ${dayTrades.map(x=>{
-          const rp = tradePnl(x), np = netTradePnl(x);
-          return `<tr class="click" onclick="openTrade('${x.id}')"><td class="mono">${fmtDate(x.date)} ${x.time}</td><td class="mono">${fmtDate(x.exitDate||x.date)} ${x.exitTime||''}</td><td>${esc(x.account)}</td><td>${esc(x.symbol)} ${x.strike||''} ${x.opt||''}</td><td>${x.side}</td><td class="n">${x.lots}</td><td class="n">${Number(x.entry||0).toFixed(2)}</td><td class="n">${Number(x.exit||0).toFixed(2)}</td><td class="n">${inr(x.charges||0)}</td><td class="n ${cls(rp)}">${inr(rp)}</td><td class="n ${cls(np)}">${inr(np)}</td></tr>`;
-        }).join('')}</table></div>` : '<div class="muted">No individual trade rows found for this date.</div>'}
+      <h3>Trades on ${fmtDate(dateStr)} <small>${sortedTrades.length} trade${sortedTrades.length===1?'':'s'}</small></h3>
+      ${sortedTrades.length ? `<div class="tbl-wrap" style="max-height:420px"><table><tr>
+        <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L${sortBtn('netPnl')}</th><th>Instrument</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points${sortBtn('points')}</th><th class="n">Realized P&L${sortBtn('realizedPnl')}</th><th>Check</th>
+      </tr>
+      ${sortedTrades.map(x=>{
+        const f = byTrade[x.id] || [];
+        const rp = tradePnl(x), np = netTradePnl(x), pts = Number(x.exit||0) - Number(x.entry||0), expLbl = tradeExpiryLabel(x);
+        return `<tr class="click" onclick="openTrade('${x.id}')">
+          <td class="mono">${fmtDate(x.date)} ${esc(x.time||'')}</td>
+          <td class="mono">${fmtDate(x.exitDate||x.date)} ${esc(x.exitTime||'')}</td>
+          <td>${esc(account(x.account)?.name||x.account)}</td>
+          <td class="n ${cls(np)}">${inr(np)}</td>
+          <td>${esc(x.symbol)} ${x.strike||''} ${esc(x.opt||'')}${expLbl?` <span class="muted mono" style="font-size:11px">(${esc(expLbl)})</span>`:''}</td>
+          <td>${esc(x.side)}</td>
+          <td class="n">${x.lots}</td>
+          <td class="n">${Number(x.entry||0).toFixed(2)}</td>
+          <td class="n">${Number(x.exit||0).toFixed(2)}</td>
+          <td class="n ${cls(pts)}">${pts>0?'+':''}${pts.toFixed(2)}</td>
+          <td class="n ${cls(rp)}">${inr(rp)}</td>
+          <td>${f.length?`<span class="pill p-high">🚩 ${f.length}</span>`:'<span class="pill p-pass">OK</span>'}</td>
+        </tr>`;
+      }).join('')}</table></div>` : '<div class="muted">No trades recorded for this date.</div>'}
     </div>
     <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" onclick="closeModal()">Close</button></div>`);
 }
