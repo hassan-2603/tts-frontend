@@ -58,7 +58,7 @@ aside{background:#ffffff;border-right:1px solid var(--line);padding:18px 12px;po
 .side-foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--mut)}
 .side-foot a{color:var(--b);font-weight:600;text-decoration:none}
 .side-foot a:hover{text-decoration:underline}
-main{padding:22px 28px 40px;min-width:0;background:var(--bg)}
+main{max-width:1120px;width:100%;margin:0 auto;padding:24px 44px 56px;min-width:0;background:var(--bg)}
 .top{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
 .top h1{font-size:22px;margin:0;color:var(--tx);font-weight:700;letter-spacing:-.3px}
 .top .sub{color:var(--mut);font-size:13px;margin-top:3px}
@@ -70,14 +70,18 @@ main{padding:22px 28px 40px;min-width:0;background:var(--bg)}
 .pill-disconnected,.p-stop,.p-fail,.p-high{background:var(--rl);color:var(--r);border:1px solid var(--red-border)}
 .p-watch,.p-med{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-border)}
 .p-test,.p-low{background:#f8fafc;color:var(--mut);border:1px solid var(--line)}
-.grid{display:grid;gap:12px}
+.grid{display:grid;gap:14px}
 .k7{grid-template-columns:repeat(7,1fr)}.k6{grid-template-columns:repeat(6,1fr)}.k4{grid-template-columns:repeat(4,1fr)}.k3{grid-template-columns:repeat(3,1fr)}.k2{grid-template-columns:1fr 1fr}
 .c21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;color:var(--tx);box-shadow:0 1px 3px rgba(0,0,0,0.02);transition:all .15s ease}
-.card:hover{border-color:#cbd5e1;box-shadow:0 4px 12px rgba(0,0,0,0.05)}
-.card.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,0.02)}
-.card.kpi.kpi-pos{background:var(--gl) !important;border-color:var(--green-border) !important}
-.card.kpi.kpi-neg{background:var(--rl) !important;border-color:var(--red-border) !important}
+main > .grid.c21, main > .grid.k2{grid-template-columns:1fr;gap:16px}
+.card{background:var(--card);border:none;border-radius:0;padding:20px 24px;color:var(--tx);box-shadow:0 0 22px rgba(15,23,42,0.075), 0 0 6px rgba(15,23,42,0.045);transition:box-shadow .18s ease}
+.card:hover{border:none;box-shadow:0 0 28px rgba(15,23,42,0.105), 0 0 8px rgba(15,23,42,0.06)}
+.grid.k7,.grid.k6,.grid.k4,.grid.k3{background:var(--card);border:none;border-radius:0;padding:20px 24px;box-shadow:0 0 22px rgba(15,23,42,0.075), 0 0 6px rgba(15,23,42,0.045)}
+.card .grid{background:transparent !important;box-shadow:none !important;border:none !important;padding:0 !important}
+.card.kpi{background:transparent !important;border:none !important;border-radius:0 !important;padding:8px 6px !important;box-shadow:none !important}
+.card.kpi:hover,.card .card:hover,.card .card.kpi:hover{border:none !important;box-shadow:none !important;transform:none}
+.card .card{background:transparent !important;border:none !important;border-radius:0 !important;box-shadow:none !important;padding:8px 6px !important}
+.card.kpi.kpi-pos,.card.kpi.kpi-neg{background:transparent !important;border:none !important;box-shadow:none !important}
 .card h3{margin:0 0 12px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--tx)}
 .card h3 small{color:var(--mut);font-weight:400;font-size:12.5px}
 .kpi .l{color:var(--mut);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
@@ -91,7 +95,7 @@ th{position:sticky;top:0;text-align:left;color:var(--mut);font-weight:600;font-s
 td{padding:10px 12px;white-space:nowrap;border-bottom:1px solid var(--line-subtle);vertical-align:middle;color:var(--tx)}
 tr.click{cursor:pointer}tr.click:hover td{background:#f8fafc}
 td.n,th.n{text-align:right;font-family:var(--mono)}
-.tbl-wrap{overflow:auto;max-height:560px;background:#ffffff;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.02)}
+.tbl-wrap{overflow:auto;max-height:560px;background:#ffffff;border:none;border-radius:0;box-shadow:none}
 .btn{background:#ffffff;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:7px 14px;font:inherit;font-weight:600;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;box-shadow:0 1px 2px rgba(0,0,0,0.03);transition:all .15s ease}
 .btn:hover{background:#f8fafc;border-color:#cbd5e1;text-decoration:none}
 .btn.pri{background:#0f172a;border-color:#0f172a;color:#ffffff;box-shadow:0 1px 3px rgba(15,23,42,0.2)}
@@ -885,7 +889,7 @@ function renderOverviewFinancialCardsHtml(aid){
         </div>
         <div class="v ${valCls}" style="margin-top:3px;font-size:17px;letter-spacing:-0.02em">${esc(displayVal)}</div>
       </div>
-      <div class="h" style="margin-top:5px;padding-top:4px;border-top:1px solid var(--line-subtle);font-size:9.5px;color:var(--text-muted);display:flex;align-items:center;gap:4px">
+      <div class="h" style="margin-top:5px;padding-top:2px;font-size:10px;color:var(--mut);display:flex;align-items:center;gap:4px">
         <span>🕒</span> ${foot}
       </div>
     </div>`;
@@ -1005,7 +1009,7 @@ function renderOverviewFundsCardsHtml(){
         </div>
         <div class="v" style="margin-top:3px;font-size:17px;letter-spacing:-0.02em;color:var(--text)">${esc(displayVal)}</div>
       </div>
-      <div class="h" style="margin-top:5px;padding-top:4px;border-top:1px solid var(--line-subtle);font-size:9.5px;color:var(--text-muted);display:flex;align-items:center;gap:4px">
+      <div class="h" style="margin-top:5px;padding-top:2px;font-size:10px;color:var(--mut);display:flex;align-items:center;gap:4px">
         <span>🕒</span> ${foot}
       </div>
     </div>`;
@@ -1060,10 +1064,10 @@ V.overview = () => {
   const cnt = s => S.traders.filter(t => t.status === s).length;
 
   const ovFinSection = LIVE ? `
-  <div class="card" style="margin-bottom:10px;padding:10px 14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:13px;font-weight:700;color:var(--text)">Account Financials</span>
+        <span style="font-size:14px;font-weight:700;color:var(--text)">Account Financials</span>
         <span class="pill p-low" style="font-size:10px;padding:1px 6px">PositionBook &amp; Limits</span>
       </div>
       <div class="row" style="gap:8px;align-items:center">
@@ -1074,7 +1078,7 @@ V.overview = () => {
         ${SEL.ovAccount ? `<button class="btn sm" onclick="loadOverviewFinancialSummary(SEL.ovAccount, true);loadOverviewFundsSummary(true)" title="Force live sync from Zebu" style="height:28px;padding:2px 8px;font-size:11px">↻ Refresh</button>` : `<button class="btn sm" onclick="loadOverviewFundsSummary(true)" title="Force refresh Funds & Limits" style="height:28px;padding:2px 8px;font-size:11px">↻ Refresh</button>`}
       </div>
     </div>
-    <div class="ov-metrics-quad" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+    <div class="ov-metrics-quad" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
       <div id="ovFinCards" style="display:contents">${renderOverviewFinancialCardsHtml(SEL.ovAccount)}</div>
       <div id="ovFundsCards" style="display:contents">${renderOverviewFundsCardsHtml()}</div>
     </div>
@@ -1082,22 +1086,28 @@ V.overview = () => {
 
   return header('Overview', 'Today · ' + fmtDate(TODAY) + ' · all traders', `${LIVE?`<button class="btn sm" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}<button class="btn" onclick="go('trades')">Import trades</button><button class="btn pri" onclick="go('flags')">View red flags</button>`) +
   ovFinSection +
-  `<div class="grid k6">
-    ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
-    ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
-    ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
-    ${kpi('P&L today', inrS(pnlToday), tToday.length+' trades', cls(pnlToday))}
-    ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
-    ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
-  </div>
-  <div class="grid c21" style="margin-top:14px">
-    <div class="card"><h3>Latest red flags <small>most recent first</small></h3>${flagTable(flags.slice(0,7))}</div>
-    <div class="card"><h3>30-day test progress</h3>
-      ${S.traders.map(t=>{ const sc=scorecard(t); return `<div style="margin-bottom:12px;cursor:pointer" onclick="openReport('${t.id}')">
-        <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span>${statusPill(t.status)} ${t.status==='Testing'||t.status==='Watch'?resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total):''}</span></div>
-        <div class="bar" style="margin-top:6px"><i style="width:${Math.min(100,sc.day/sc.total*100)}%;background:${sc.result==='Pass'?'var(--green)':sc.result==='Watch'?'var(--amber)':'var(--red)'}"></i></div>
-        <div class="muted" style="font-size:11.5px;margin-top:3px">Rule-follow ${pct(sc.m.ruleFollow)} · P&L ${inrS(sc.m.total)} · ${sc.miss} check(s) missed</div></div>`; }).join('')}
+  `<div class="card" style="margin-bottom:16px">
+    <div class="grid k3" style="gap:16px;margin-bottom:16px">
+      ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
+      ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
+      ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
     </div>
+    <div class="grid k3" style="gap:16px">
+      ${kpi('P&L today', inrS(pnlToday), tToday.length+' trades', cls(pnlToday))}
+      ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
+      ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <h3>Latest red flags <small>most recent first</small></h3>
+    ${flagTable(flags.slice(0,7))}
+  </div>
+  <div class="card">
+    <h3>30-day test progress</h3>
+    ${S.traders.map(t=>{ const sc=scorecard(t); return `<div style="margin-bottom:12px;cursor:pointer" onclick="openReport('${t.id}')">
+      <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span>${statusPill(t.status)} ${t.status==='Testing'||t.status==='Watch'?resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total):''}</span></div>
+      <div class="bar" style="margin-top:6px"><i style="width:${Math.min(100,sc.day/sc.total*100)}%;background:${sc.result==='Pass'?'var(--green)':sc.result==='Watch'?'var(--amber)':'var(--red)'}"></i></div>
+      <div class="muted" style="font-size:11.5px;margin-top:3px">Rule-follow ${pct(sc.m.ruleFollow)} · P&L ${inrS(sc.m.total)} · ${sc.miss} check(s) missed</div></div>`; }).join('')}
   </div>`;
 };
 
