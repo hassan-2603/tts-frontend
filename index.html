@@ -975,14 +975,14 @@ function shell(inner){
   return `<div class="app"><aside>
     <div class="brand"><div class="logo">TT</div><div><b>Trader Tracking</b><small>Record · Check · Decide</small></div></div>
     <nav class="nav">${NAV.map(n=> n[0]==='sec'?`<div class="sec">${n[1]}</div>`:
-      `<a href="#${n[0]}" onclick="go('${n[0]}');return false" class="${VIEW===n[0]?'on':''}"><span style="width:18px;text-align:center">${n[2]}</span>${n[1]}${n[0]==='flags'&&nf?`<span class="ct">${nf}</span>`:''}</a>`).join('')}</nav>
+      `<a href="#${n[0]}" onclick="go('${n[0]}');return false" class="${VIEW===n[0]?'on':''}"><span style="width:18px;text-align:center">${n[2]}</span>${n[1]}${n[0]==='flags'?`<span id="navFlagCt" class="ct" style="display:${nf?'inline-block':'none'}">${nf}</span>`:''}</a>`).join('')}</nav>
     <div class="side-foot">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="color:var(--tx);font-weight:700;font-size:13.5px">${esc(USER)}</span>
         <span class="pill ${ROLE==='admin'?'p-live':'p-test'}">${ROLE}</span>
       </div>
       <div style="font-size:12.5px;color:var(--mut)">
-        Data: <b style="color:var(--tx)">${LIVE?'Live · Zebu':'Demo data'}</b>${LIVE&&STATUS.poll?.last?`<br><span style="font-size:11.5px">Sync: ${esc(STATUS.poll.last.slice(11,16))} IST</span>`:''}
+        Data: <b style="color:var(--tx)">${LIVE?'Live · Zebu':'Demo data'}</b>${LIVE&&STATUS.poll?.last?`<br><span id="sideSyncTime" style="font-size:11.5px">Sync: ${esc(STATUS.poll.last.slice(11,16))} IST</span>`:'<br><span id="sideSyncTime" style="font-size:11.5px"></span>'}
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.14);display:flex;justify-content:space-between;align-items:center">
         <span style="color:var(--mut);font-size:11.5px">Tracking only</span>
@@ -1300,6 +1300,56 @@ async function loadOverviewFundsSummary(force=false){
   }
 }
 
+function renderOverviewKpiBoxHtml(){
+  const {flags} = chk();
+  const today = flags.filter(f => f.trade.date === TODAY);
+  const tToday = S.trades.filter(t => t.date === TODAY);
+  const flaggedTr = new Set(today.map(f => f.trade.trader));
+  const all = metrics(S.trades);
+  const pnlToday = tToday.reduce((a, t) => a + tradePnl(t), 0);
+  const cnt = s => S.traders.filter(t => t.status === s).length;
+  return `
+    <div class="grid k3" style="gap:16px;margin-bottom:16px">
+      ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
+      ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
+      ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
+    </div>
+    <div class="grid k3" style="gap:16px">
+      ${kpi('P&L today', inrS(pnlToday), tToday.length+' trades', cls(pnlToday))}
+      ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
+      ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
+    </div>`;
+}
+function renderOverviewProgressHtml(){
+  return S.traders.map(t=>{ const sc=scorecard(t); return `<div style="margin-bottom:12px;cursor:pointer" onclick="openReport('${t.id}')">
+      <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span>${statusPill(t.status)} ${t.status==='Testing'||t.status==='Watch'?resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total):''}</span></div>
+      <div class="bar" style="margin-top:6px"><i style="width:${Math.min(100,sc.day/sc.total*100)}%;background:${sc.result==='Pass'?'var(--green)':sc.result==='Watch'?'var(--amber)':'var(--red)'}"></i></div>
+      <div class="muted" style="font-size:11.5px;margin-top:3px">Rule-follow ${pct(sc.m.ruleFollow)} · P&L ${inrS(sc.m.total)} · ${sc.miss} check(s) missed</div></div>`; }).join('');
+}
+function updateOverviewLiveBoxes(){
+  if(VIEW !== 'overview') return;
+  updateOverviewFinancialCards();
+  updateOverviewFundsCards();
+  const kpiHost = document.getElementById('ovKpiBox');
+  if(kpiHost) kpiHost.innerHTML = renderOverviewKpiBoxHtml();
+  const flagsHost = document.getElementById('ovFlagsBox');
+  if(flagsHost) flagsHost.innerHTML = flagTable(chk().flags.slice(0,7));
+  const progHost = document.getElementById('ovProgressBox');
+  if(progHost) progHost.innerHTML = renderOverviewProgressHtml();
+}
+function updateSidebarLiveBadges(){
+  const ct = document.getElementById('navFlagCt');
+  if(ct){
+    const nf = chk().flags.filter(f=>f.trade.date===TODAY).length;
+    ct.textContent = String(nf);
+    ct.style.display = nf ? 'inline-block' : 'none';
+  }
+  const st = document.getElementById('sideSyncTime');
+  if(st && LIVE && STATUS.poll?.last){
+    st.textContent = 'Sync: ' + STATUS.poll.last.slice(11,16) + ' IST';
+  }
+}
+
 V.overview = () => {
   // Ensure an Overview account is selected if accounts exist
   const ovAccounts = S.accounts || [];
@@ -1308,12 +1358,6 @@ V.overview = () => {
     SEL.ovAccount = linkedFirst.id;
   }
   const {flags} = chk();
-  const today = flags.filter(f => f.trade.date === TODAY);
-  const tToday = S.trades.filter(t => t.date === TODAY);
-  const flaggedTr = new Set(today.map(f => f.trade.trader));
-  const all = metrics(S.trades);
-  const pnlToday = tToday.reduce((a, t) => a + tradePnl(t), 0);
-  const cnt = s => S.traders.filter(t => t.status === s).length;
 
   const ovFinSection = LIVE ? `
   <div class="card" style="margin-bottom:16px">
@@ -1338,28 +1382,14 @@ V.overview = () => {
 
   return header('Overview', 'Today · ' + fmtDate(TODAY) + ' · all traders', `${LIVE&&canEdit()?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn btn-soft-green" onclick="go('trades')">Import trades</button>`:''}<button class="btn btn-soft-red" onclick="go('flags')">View red flags</button>`) +
   ovFinSection +
-  `<div class="card" style="margin-bottom:16px">
-    <div class="grid k3" style="gap:16px;margin-bottom:16px">
-      ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
-      ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
-      ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
-    </div>
-    <div class="grid k3" style="gap:16px">
-      ${kpi('P&L today', inrS(pnlToday), tToday.length+' trades', cls(pnlToday))}
-      ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
-      ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
-    </div>
-  </div>
+  `<div class="card" id="ovKpiBox" style="margin-bottom:16px">${renderOverviewKpiBoxHtml()}</div>
   <div class="card" style="margin-bottom:16px">
     <h3>Latest red flags <small>most recent first</small></h3>
-    ${flagTable(flags.slice(0,7))}
+    <div id="ovFlagsBox">${flagTable(flags.slice(0,7))}</div>
   </div>
   <div class="card">
     <h3>30-day test progress</h3>
-    ${S.traders.map(t=>{ const sc=scorecard(t); return `<div style="margin-bottom:12px;cursor:pointer" onclick="openReport('${t.id}')">
-      <div class="row" style="justify-content:space-between"><b>${esc(t.name)}</b><span>${statusPill(t.status)} ${t.status==='Testing'||t.status==='Watch'?resultPill(sc.done?sc.result:'Day '+sc.day+'/'+sc.total):''}</span></div>
-      <div class="bar" style="margin-top:6px"><i style="width:${Math.min(100,sc.day/sc.total*100)}%;background:${sc.result==='Pass'?'var(--green)':sc.result==='Watch'?'var(--amber)':'var(--red)'}"></i></div>
-      <div class="muted" style="font-size:11.5px;margin-top:3px">Rule-follow ${pct(sc.m.ruleFollow)} · P&L ${inrS(sc.m.total)} · ${sc.miss} check(s) missed</div></div>`; }).join('')}
+    <div id="ovProgressBox">${renderOverviewProgressHtml()}</div>
   </div>`;
 };
 
@@ -2887,12 +2917,54 @@ function linkZebu(id){
 }
 let _isRefreshingLive = false;
 let _lastBgBrokerTrigger = 0;
-async function refreshLive(){ 
-  if(!LIVE || _isRefreshingLive) return; 
+let _lastUserInputAt = 0;
+let _lastLiveDigest = '';
+document.addEventListener('input', () => { _lastUserInputAt = Date.now(); }, true);
+document.addEventListener('keydown', () => { _lastUserInputAt = Date.now(); }, true);
+
+function _isUserBusy(){
+  if($('#mbg')?.classList.contains('on')) return true;
+  if(document.activeElement?.matches?.('input,select,textarea')) return true;
+  if(Date.now() - _lastUserInputAt < 4000) return true;
+  if(document.getElementById('u_acc_menu')?.style.display === 'block') return true;
+  if(document.getElementById('e_segment_menu')?.style.display === 'block') return true;
+  return false;
+}
+function _liveStateDigest(){
+  return [
+    S.trades?.length || 0,
+    S.accounts?.map(a => `${a.id}:${a.link}:${a.broker_total_pnl}:${a.last_sync_at}`).join('|') || '',
+    S.traders?.length || 0,
+    VIOLATIONS?.length || 0,
+    DAILY_REPORTS?.length || 0,
+  ].join('#');
+}
+function _applyLiveUpdateWithoutDisruption(){
+  updateSidebarLiveBadges();
+  // Never wipe form-heavy pages (rules, settings) or interrupt active typing/modals
+  if(_isUserBusy() || VIEW === 'rules' || VIEW === 'settings') return;
+  // On Overview, surgically update ONLY the data boxes — never replace the whole page or reset scroll
+  if(VIEW === 'overview'){
+    updateOverviewLiveBoxes();
+    return;
+  }
+  // On other views, skip full re-render if nothing actually changed; otherwise preserve exact scroll positions
+  const dig = _liveStateDigest();
+  if(dig === _lastLiveDigest) return;
+  _lastLiveDigest = dig;
+  const winY = window.scrollY;
+  const tblScrolls = [...document.querySelectorAll('.tbl-wrap')].map(el => el.scrollTop);
+  render();
+  window.scrollTo(0, winY);
+  const wraps = document.querySelectorAll('.tbl-wrap');
+  tblScrolls.forEach((top, i) => { if(wraps[i]) wraps[i].scrollTop = top; });
+}
+async function refreshLive(){
+  if(!LIVE || _isRefreshingLive) return;
   _isRefreshingLive = true;
-  try { 
-    await API.syncAll(); 
-    render();
+  try {
+    await API.syncAll();
+    _applyLiveUpdateWithoutDisruption();
     // Trigger background broker poll non-blockingly at most once every 30s
     const nowMs = Date.now();
     if(canEdit() && nowMs - _lastBgBrokerTrigger > 30000 && (VIEW === 'report' || VIEW === 'overview' || VIEW === 'trades')){
@@ -2900,7 +2972,7 @@ async function refreshLive(){
       const targetId = SEL.trader;
       const acc = account(targetId) || S.accounts.find(a => a.zebu_uid === targetId || a.trader === targetId);
       if(acc && acc.link === 'Linked'){
-        API.syncAccount(acc.id).then(()=>API.syncAll()).then(()=>render()).catch(()=>{});
+        API.syncAccount(acc.id).then(()=>API.syncAll()).then(()=>_applyLiveUpdateWithoutDisruption()).catch(()=>{});
       }
     }
   } catch(e){} finally {
@@ -3586,7 +3658,7 @@ try {
         USER=null;
       }
     }catch(e){ console.error('Auth parse error:', e); }
-    setInterval(()=>{ if(USER && !$('#mbg').classList.contains('on') && document.visibilityState!=='hidden' && !document.activeElement?.matches?.('input,select,textarea')) refreshLive(); }, 15000);
+    setInterval(()=>{ if(USER && document.visibilityState!=='hidden' && !_isUserBusy()) refreshLive(); }, 15000);
   } else {
     load();
     try{
