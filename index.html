@@ -332,12 +332,22 @@ function load(){
 }
 function saveLiveCache(){
   if(!LIVE || !S) return;
+  // Never overwrite a valid cached snapshot with an empty state (e.g. during a transient network hiccup)
+  const hasCore = (Array.isArray(S.traders) && S.traders.length > 0) || (Array.isArray(S.accounts) && S.accounts.length > 0);
+  if(!hasCore){
+    try { if(localStorage.getItem(LIVE_CACHE_KEY)) return; } catch(e){}
+  }
+  const ovFin = (typeof OV_FIN_CACHE !== 'undefined' && OV_FIN_CACHE) ? OV_FIN_CACHE : {};
+  const ovFunds = (typeof OV_FUNDS_CACHE !== 'undefined') ? OV_FUNDS_CACHE : null;
   const payload = {
     S,
     STATUS,
     DAILY_REPORTS,
     VIOLATIONS,
+    OV_FIN_CACHE: ovFin,
+    OV_FUNDS_CACHE: ovFunds,
     trader: SEL.trader,
+    ovAccount: SEL.ovAccount,
     ts: Date.now()
   };
   try {
@@ -369,6 +379,13 @@ function loadLiveCache(){
       DAILY_REPORTS = Array.isArray(cached.DAILY_REPORTS) ? cached.DAILY_REPORTS : [];
       VIOLATIONS = Array.isArray(cached.VIOLATIONS) ? cached.VIOLATIONS : [];
       if(cached.trader) SEL.trader = cached.trader;
+      if(cached.ovAccount) SEL.ovAccount = cached.ovAccount;
+      if(cached.OV_FIN_CACHE && typeof OV_FIN_CACHE !== 'undefined'){
+        Object.assign(OV_FIN_CACHE, cached.OV_FIN_CACHE);
+      }
+      if(cached.OV_FUNDS_CACHE && typeof OV_FUNDS_CACHE !== 'undefined'){
+        OV_FUNDS_CACHE = cached.OV_FUNDS_CACHE;
+      }
       invalidate();
       return true;
     }
@@ -1339,6 +1356,7 @@ async function loadOverviewFundsSummary(force=false){
   try {
     const res = await API.fundsSummary(force);
     OV_FUNDS_CACHE = res;
+    saveLiveCache();
   } catch(e){
     const prev = OV_FUNDS_CACHE;
     if(prev && prev.available_funds !== null && prev.available_funds !== undefined){
