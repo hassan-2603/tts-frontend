@@ -332,16 +332,31 @@ function load(){
 }
 function saveLiveCache(){
   if(!LIVE || !S) return;
+  const payload = {
+    S,
+    STATUS,
+    DAILY_REPORTS,
+    VIOLATIONS,
+    trader: SEL.trader,
+    ts: Date.now()
+  };
   try {
-    localStorage.setItem(LIVE_CACHE_KEY, JSON.stringify({
-      S,
-      STATUS,
-      DAILY_REPORTS,
-      VIOLATIONS,
-      trader: SEL.trader,
-      ts: Date.now()
-    }));
-  } catch(e){}
+    localStorage.setItem(LIVE_CACHE_KEY, JSON.stringify(payload));
+  } catch(e){
+    // QuotaExceeded fallback: persist core state + most recent 500 trades so page refresh never starts empty
+    try {
+      const compactS = {
+        ...S,
+        trades: Array.isArray(S.trades) ? S.trades.slice(-500) : [],
+      };
+      localStorage.setItem(LIVE_CACHE_KEY, JSON.stringify({
+        ...payload,
+        S: compactS,
+        DAILY_REPORTS: Array.isArray(DAILY_REPORTS) ? DAILY_REPORTS.slice(-180) : [],
+        VIOLATIONS: Array.isArray(VIOLATIONS) ? VIOLATIONS.slice(-300) : [],
+      }));
+    } catch(_e2){}
+  }
 }
 function loadLiveCache(){
   try {
@@ -391,8 +406,12 @@ async function loadFullHistoryTrades(){
 
 const API = {
   async req(path, opt={}){
-    const r = await fetch('/api'+path, {cache:'no-store', ...opt, headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(opt.headers||{})}});
-    if(r.status===401 && path!=='/login'){ logout(); throw new Error('Signed out — please sign in again'); }
+    const { noLogoutOn401, ...fetchOpt } = opt;
+    const r = await fetch('/api'+path, {cache:'no-store', ...fetchOpt, headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(fetchOpt.headers||{})}});
+    if(r.status===401 && path!=='/login'){
+      if(!noLogoutOn401 && path!=='/users'){ logout(); }
+      throw new Error('Signed out — please sign in again');
+    }
     if(!r.ok){ let m=r.status+''; try{ m=(await r.json()).detail||m; }catch(e){} throw new Error(m); }
     return r.json();
   },
@@ -406,10 +425,16 @@ const API = {
       dailyReports = b.dailyReports; violations = b.violations;
       HAS_OLDER_TRADES = Boolean(b.has_older_trades);
     } catch(_bootErr) {
-      [traders,accounts,rules,trades,groups,settings,ruleLog,status,dailyReports,violations] = await Promise.all([
-        this.req('/traders'), this.req('/accounts'), this.req('/rules'), this.req('/trades?from='+cutoff180), this.req('/groups'),
-        this.req('/settings'), this.req('/rulelog'), this.req('/status'),
-        this.req('/daily-reports').catch(()=>[]), this.req('/violations').catch(()=>[])]);
+      if(String(_bootErr?.message || '').includes('Signed out')) throw _bootErr;
+      // Bounded fallback (pairs of 2 instead of 10 simultaneous requests) so we never overload the DB pool
+      [traders, accounts] = await Promise.all([this.req('/traders'), this.req('/accounts')]);
+      [rules, groups] = await Promise.all([this.req('/rules'), this.req('/groups')]);
+      [settings, status] = await Promise.all([this.req('/settings'), this.req('/status')]);
+      [trades, ruleLog] = await Promise.all([this.req('/trades?from='+cutoff180), this.req('/rulelog')]);
+      [dailyReports, violations] = await Promise.all([
+        this.req('/daily-reports').catch(()=>[]),
+        this.req('/violations').catch(()=>[]),
+      ]);
     }
     traders = traders || [];
     accounts = accounts || [];
@@ -423,7 +448,7 @@ const API = {
     Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status||{};
     DAILY_REPORTS = Array.isArray(dailyReports) ? dailyReports : [];
     VIOLATIONS = Array.isArray(violations) ? violations : [];
-    if(ROLE==='admin' && (!USERS || !USERS.length)){ this.req('/users').then(u=>{ USERS=u; }).catch(()=>{}); }
+    if(ROLE==='admin' && (!USERS || !USERS.length)){ this.req('/users', {noLogoutOn401:true}).then(u=>{ USERS=u; }).catch(()=>{}); }
     const validIds = new Set([...(traders||[]).map(t=>t.id), ...(accounts||[]).map(a=>a.id), ...(accounts||[]).map(a=>a.zebu_uid).filter(Boolean)]);
     if(validIds.size && !validIds.has(SEL.trader)){
       SEL.trader = (traders && traders[0]?.id) || (accounts && accounts[0]?.id);
@@ -3442,10 +3467,12 @@ function loginView(){
    <label class="f">User<input id="lu" value="${LIVE?'':'admin'}" autocomplete="username"></label>
    ${LIVE?`<label class="f" style="margin-top:10px">Password<input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"></label>`
      :`<label class="f" style="margin-top:10px">Role<select id="lr"><option value="admin">Admin — can edit</option><option value="viewer">Viewer — read only</option></select></label>`}
-   <button class="btn pri" style="width:100%;margin-top:16px" onclick="login()">Sign in</button><div id="lerr" class="neg" style="font-size:12.5px;margin-top:8px"></div>
+   <button id="loginBtn" class="btn pri" style="width:100%;margin-top:16px" onclick="login()">Sign in</button><div id="lerr" class="neg" style="font-size:12.5px;margin-top:8px"></div>
    <div class="muted" style="font-size:12px;margin-top:10px">${LIVE?'Live · Zebu data. Ask the admin for a login.':'Demo login with sample data. The live server uses real passwords.'}</div></div></div>`;
 }
+let _LOGIN_BUSY = false;
 async function login(){
+  if(_LOGIN_BUSY) return;
   if(!LIVE){
     USER=val('lu')||'admin'; ROLE=val('lr');
     try{
@@ -3454,15 +3481,36 @@ async function login(){
     }catch(e){}
     render(); return;
   }
+  _LOGIN_BUSY = true;
+  const btn = $('#loginBtn');
+  const errEl = $('#lerr');
+  if(btn){ btn.disabled = true; btn.textContent = 'Signing in…'; }
+  if(errEl) errEl.textContent = '';
   try{
-    const r=await API.req('/login',{method:'POST',body:JSON.stringify({user:val('lu'),password:val('lp')})});
+    const r=await API.req('/login',{method:'POST',body:JSON.stringify({user:String(val('lu')||'').trim(),password:val('lp')})});
     TOKEN=r.token; USER=r.user; ROLE=r.role;
     try{
       localStorage.setItem('tts_live',JSON.stringify({TOKEN,USER,ROLE}));
       sessionStorage.setItem('tts_live',JSON.stringify({TOKEN,USER,ROLE}));
     }catch(e){}
-    await API.syncAll(); initDashboardWebSocket(); render();
-  }catch(e){ const el=$('#lerr'); if(el) el.textContent=e.message; }
+    // Enter dashboard immediately once authenticated; sync data cleanly without trapping user on login screen
+    render();
+    try {
+      await API.syncAll();
+    } catch(syncErr) {
+      console.warn('Post-login sync warning:', syncErr);
+      toast('Signed in — syncing data…');
+      setTimeout(()=>{ if(USER) refreshLive(); }, 3000);
+    }
+    initDashboardWebSocket();
+    render();
+  }catch(e){
+    const el=$('#lerr'); if(el) el.textContent=e.message;
+  } finally {
+    _LOGIN_BUSY = false;
+    const b = $('#loginBtn');
+    if(b){ b.disabled = false; b.textContent = 'Sign in'; }
+  }
 }
 function logout(){
   try{
