@@ -527,7 +527,7 @@ const API = {
 async function liveCall(fn){ if(!LIVE) return; try{ await fn(); await API.syncAll(); render(); }catch(e){ toast('Server: '+e.message); } }
 async function detectLive(){
   if(!/^https?:$/.test(location.protocol)) return false;
-  if(location.host.includes('vercel.app') || location.host.includes('onrender.com')) return true;
+  if(location.host.includes('vercel.app') || location.host.includes('up.railway.app') || location.host.includes('onrender.com')) return true;
   try{ const c=new AbortController(); setTimeout(()=>c.abort(),8000); const r=await fetch('/api/health',{signal:c.signal}); if(!r.ok) return false; const j=await r.json(); return j.mode==='live'; }catch(e){ return false; }
 }
 
@@ -3632,7 +3632,7 @@ let WS_RETRY_DELAY = 2000;
 function getBackendWsUrl(){
   const qs = TOKEN ? ('?token=' + encodeURIComponent(TOKEN)) : '';
   if(location.host.includes('vercel.app')){
-    return 'wss://tts-backend-ezm3.onrender.com/api/ws' + qs;
+    return 'wss://tts-backend-production-6975d66d.up.railway.app/api/ws' + qs;
   }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${location.host}/api/ws${qs}`;
@@ -3720,7 +3720,7 @@ try {
     savedLiveAuth = JSON.parse(localStorage.getItem('tts_live')||sessionStorage.getItem('tts_live')||'null');
   } catch(e){}
 
-  const likelyLive = location.host.includes('vercel.app') || location.host.includes('onrender.com') || Boolean(savedLiveAuth);
+  const likelyLive = location.host.includes('vercel.app') || location.host.includes('up.railway.app') || location.host.includes('onrender.com') || Boolean(savedLiveAuth);
   if(likelyLive && savedLiveAuth && savedLiveAuth.TOKEN){
     LIVE = true;
     TOKEN = savedLiveAuth.TOKEN;
