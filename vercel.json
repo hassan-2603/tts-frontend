@@ -3,11 +3,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://tts-backend-production-6975d66d.up.railway.app/api/:path*"
+      "destination": "https://device-lenses-beverages-real.trycloudflare.com/api/:path*"
     },
     {
       "source": "/auth/:path*",
-      "destination": "https://tts-backend-production-6975d66d.up.railway.app/auth/:path*"
+      "destination": "https://device-lenses-beverages-real.trycloudflare.com/auth/:path*"
     },
     {
       "source": "/(.*)",
