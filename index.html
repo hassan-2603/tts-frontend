@@ -432,32 +432,44 @@ const API = {
   },
   async syncAll(){
     let traders, accounts, rules, trades, groups, settings, ruleLog, status, dailyReports, violations;
-    const cutoff60 = addDays(TODAY,-60);
+    const cutoff30 = addDays(TODAY,-30);
     try {
-      const b = await this.req('/bootstrap?from='+cutoff60, {timeoutMs: 25000});
+      const b = await this.req('/bootstrap?from='+cutoff30+'&limit=1000', {timeoutMs: 25000});
       traders = b.traders; accounts = b.accounts; rules = b.rules; trades = b.trades;
       groups = b.groups; settings = b.settings; ruleLog = b.ruleLog; status = b.status;
       dailyReports = b.dailyReports; violations = b.violations;
       HAS_OLDER_TRADES = Boolean(b.has_older_trades);
     } catch(_bootErr) {
       if(String(_bootErr?.message || '').includes('Signed out')) throw _bootErr;
-      // Bounded fallback (pairs of 2 instead of 10 simultaneous requests) so we never overload the DB pool
-      [traders, accounts] = await Promise.all([this.req('/traders'), this.req('/accounts')]);
-      [rules, groups] = await Promise.all([this.req('/rules'), this.req('/groups')]);
-      [settings, status] = await Promise.all([this.req('/settings'), this.req('/status')]);
-      [trades, ruleLog] = await Promise.all([this.req('/trades?from='+cutoff60), this.req('/rulelog')]);
+      // Resilient bounded fallback: never let one slow endpoint discard accounts/traders/settings
+      [traders, accounts] = await Promise.all([
+        this.req('/traders').catch(()=>S.traders||[]),
+        this.req('/accounts').catch(()=>S.accounts||[]),
+      ]);
+      [rules, groups] = await Promise.all([
+        this.req('/rules').catch(()=>S.rules||{}),
+        this.req('/groups').catch(()=>S.groups||[]),
+      ]);
+      [settings, status] = await Promise.all([
+        this.req('/settings').catch(()=>S.settings||DEFAULT_SETTINGS),
+        this.req('/status').catch(()=>STATUS||{}),
+      ]);
+      [trades, ruleLog] = await Promise.all([
+        this.req('/trades?from='+cutoff30+'&limit=1000').catch(()=>S.trades||[]),
+        this.req('/rulelog').catch(()=>S.ruleLog||[]),
+      ]);
       [dailyReports, violations] = await Promise.all([
-        this.req('/daily-reports').catch(()=>[]),
-        this.req('/violations').catch(()=>[]),
+        this.req('/daily-reports').catch(()=>DAILY_REPORTS||[]),
+        this.req('/violations').catch(()=>VIOLATIONS||[]),
       ]);
     }
     traders = traders || [];
     accounts = accounts || [];
     trades = trades || [];
-    // Preserve already-loaded older historical trades (>60 days) across routine refreshes
+    // Preserve already-loaded older historical trades (>30 days) across routine refreshes
     if(FULL_HISTORY_LOADED && Array.isArray(S?.trades) && S.trades.length){
       const freshIds = new Set(trades.map(t => t.id));
-      const olderKept = S.trades.filter(t => !freshIds.has(t.id) && !t.open && (t.exitDate || t.date || '') < cutoff60);
+      const olderKept = S.trades.filter(t => !freshIds.has(t.id) && !t.open && (t.exitDate || t.date || '') < cutoff30);
       if(olderKept.length) trades = [...trades, ...olderKept];
     }
     Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status||{};
