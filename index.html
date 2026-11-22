@@ -406,8 +406,23 @@ async function loadFullHistoryTrades(){
 
 const API = {
   async req(path, opt={}){
-    const { noLogoutOn401, ...fetchOpt } = opt;
-    const r = await fetch('/api'+path, {cache:'no-store', ...fetchOpt, headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(fetchOpt.headers||{})}});
+    const { noLogoutOn401, timeoutMs, ...fetchOpt } = opt;
+    const ctrl = fetchOpt.signal ? null : new AbortController();
+    const timer = ctrl ? setTimeout(()=>ctrl.abort(), timeoutMs || 20000) : null;
+    let r;
+    try {
+      r = await fetch('/api'+path, {
+        cache:'no-store',
+        ...fetchOpt,
+        signal: fetchOpt.signal || ctrl.signal,
+        headers:{'Content-Type':'application/json',...(TOKEN?{'Authorization':'Bearer '+TOKEN}:{}),...(fetchOpt.headers||{})}
+      });
+    } catch(fetchErr) {
+      if(fetchErr && fetchErr.name === 'AbortError') throw new Error('Request timed out — server is busy');
+      throw fetchErr;
+    } finally {
+      if(timer) clearTimeout(timer);
+    }
     if(r.status===401 && path!=='/login'){
       if(!noLogoutOn401 && path!=='/users'){ logout(); }
       throw new Error('Signed out — please sign in again');
@@ -417,9 +432,9 @@ const API = {
   },
   async syncAll(){
     let traders, accounts, rules, trades, groups, settings, ruleLog, status, dailyReports, violations;
-    const cutoff180 = addDays(TODAY,-180);
+    const cutoff60 = addDays(TODAY,-60);
     try {
-      const b = await this.req('/bootstrap?from='+cutoff180);
+      const b = await this.req('/bootstrap?from='+cutoff60, {timeoutMs: 25000});
       traders = b.traders; accounts = b.accounts; rules = b.rules; trades = b.trades;
       groups = b.groups; settings = b.settings; ruleLog = b.ruleLog; status = b.status;
       dailyReports = b.dailyReports; violations = b.violations;
@@ -430,7 +445,7 @@ const API = {
       [traders, accounts] = await Promise.all([this.req('/traders'), this.req('/accounts')]);
       [rules, groups] = await Promise.all([this.req('/rules'), this.req('/groups')]);
       [settings, status] = await Promise.all([this.req('/settings'), this.req('/status')]);
-      [trades, ruleLog] = await Promise.all([this.req('/trades?from='+cutoff180), this.req('/rulelog')]);
+      [trades, ruleLog] = await Promise.all([this.req('/trades?from='+cutoff60), this.req('/rulelog')]);
       [dailyReports, violations] = await Promise.all([
         this.req('/daily-reports').catch(()=>[]),
         this.req('/violations').catch(()=>[]),
@@ -439,10 +454,10 @@ const API = {
     traders = traders || [];
     accounts = accounts || [];
     trades = trades || [];
-    // Preserve already-loaded older historical trades (>180 days) across routine refreshes
+    // Preserve already-loaded older historical trades (>60 days) across routine refreshes
     if(FULL_HISTORY_LOADED && Array.isArray(S?.trades) && S.trades.length){
       const freshIds = new Set(trades.map(t => t.id));
-      const olderKept = S.trades.filter(t => !freshIds.has(t.id) && !t.open && (t.exitDate || t.date || '') < cutoff180);
+      const olderKept = S.trades.filter(t => !freshIds.has(t.id) && !t.open && (t.exitDate || t.date || '') < cutoff60);
       if(olderKept.length) trades = [...trades, ...olderKept];
     }
     Object.assign(S,{traders,accounts,rules,trades,groups,ruleLog,settings:{...DEFAULT_SETTINGS,...settings,dataSource:'live'}}); STATUS=status||{};
@@ -2990,9 +3005,13 @@ async function refreshLive(){
   try {
     await API.syncAll();
     _applyLiveUpdateWithoutDisruption();
-    // Trigger background broker poll non-blockingly at most once every 30s
+    // Trigger background broker poll non-blockingly ONLY during Indian market hours (Mon-Fri 09:15-15:45 IST), at most once every 60s
     const nowMs = Date.now();
-    if(canEdit() && nowMs - _lastBgBrokerTrigger > 30000 && (VIEW === 'report' || VIEW === 'overview' || VIEW === 'trades')){
+    const istNow = new Date(nowMs + (330 + new Date().getTimezoneOffset()) * 60000);
+    const istDay = istNow.getDay();
+    const istMin = istNow.getHours() * 60 + istNow.getMinutes();
+    const inMarketHrs = istDay >= 1 && istDay <= 5 && istMin >= 555 && istMin <= 945;
+    if(inMarketHrs && canEdit() && nowMs - _lastBgBrokerTrigger > 60000 && (VIEW === 'report' || VIEW === 'overview' || VIEW === 'trades')){
       _lastBgBrokerTrigger = nowMs;
       const targetId = SEL.trader;
       const acc = account(targetId) || S.accounts.find(a => a.zebu_uid === targetId || a.trader === targetId);
@@ -3677,12 +3696,15 @@ try {
     TOKEN = savedLiveAuth.TOKEN;
     USER = savedLiveAuth.USER;
     ROLE = savedLiveAuth.ROLE;
-    if(loadLiveCache()){
-      // Instant (<10ms) render from cached snapshot — zero "Loading…" screen!
-      render();
-    } else {
-      $('#root').innerHTML='<div class="login"><div class="muted">Loading…</div></div>';
+    if(!loadLiveCache()){
+      // Render dashboard shell immediately even when cache is empty — never trap user on "Loading…" screen
+      S={settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),traders:[],accounts:[],rules:{},ruleLog:[],trades:[],groups:[]};
     }
+    render();
+  } else if(likelyLive) {
+    LIVE = true;
+    USER = null;
+    render();
   } else {
     $('#root').innerHTML='<div class="login"><div class="muted">Loading…</div></div>';
   }
@@ -3696,17 +3718,18 @@ try {
       const u = savedLiveAuth || JSON.parse(localStorage.getItem('tts_live')||sessionStorage.getItem('tts_live')||'null');
       if(u){
         TOKEN=u.TOKEN; USER=u.USER; ROLE=u.ROLE;
+        initDashboardWebSocket();
         try {
           await API.syncAll();
         } catch(syncErr) {
           console.warn('Initial sync warning:', syncErr);
+          if(USER) setTimeout(()=>{ if(USER) refreshLive(); }, 4000);
         }
-        initDashboardWebSocket();
       } else {
         USER=null;
       }
     }catch(e){ console.error('Auth parse error:', e); }
-    setInterval(()=>{ if(USER && document.visibilityState!=='hidden' && !_isUserBusy()) refreshLive(); }, 15000);
+    setInterval(()=>{ if(USER && document.visibilityState!=='hidden' && !_isUserBusy()) refreshLive(); }, 45000);
   } else {
     load();
     try{
