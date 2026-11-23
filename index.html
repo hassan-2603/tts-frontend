@@ -398,7 +398,7 @@ function save(){ if(!LIVE){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }
 function canEdit(){ return ROLE==='admin'; }
 
 // ---------- API adapter (live deployment) ----------
-let DAILY_REPORTS = [], VIOLATIONS = [];
+let DAILY_REPORTS = [], VIOLATIONS = [], OVERVIEW_PNL = null;
 let HAS_OLDER_TRADES = false;
 let FULL_HISTORY_LOADED = false;
 let FULL_HISTORY_LOADING = false;
@@ -457,6 +457,7 @@ const API = {
       traders = b.traders; accounts = b.accounts; rules = b.rules; trades = b.trades;
       groups = b.groups; settings = b.settings; ruleLog = b.ruleLog; status = b.status;
       dailyReports = b.dailyReports; violations = b.violations;
+      OVERVIEW_PNL = b.overviewPnl || null;
       HAS_OLDER_TRADES = Boolean(b.has_older_trades);
     } catch(_bootErr) {
       if(String(_bootErr?.message || '').includes('Signed out')) throw _bootErr;
@@ -1384,10 +1385,23 @@ async function loadOverviewFundsSummary(force=false){
 function renderOverviewKpiBoxHtml(){
   const {flags} = chk();
   const today = flags.filter(f => f.trade.date === TODAY);
-  const tToday = S.trades.filter(t => t.date === TODAY);
+  const tToday = S.trades.filter(t => (t.exitDate || t.date) === TODAY || t.date === TODAY);
   const flaggedTr = new Set(today.map(f => f.trade.trader));
   const all = metrics(S.trades);
-  const pnlToday = tToday.reduce((a, t) => a + tradePnl(t), 0);
+  const accsWithBrokerToday = (S.accounts || []).filter(a => a.broker_position_pnl !== null && a.broker_position_pnl !== undefined);
+  const fallbackTodayPnl = accsWithBrokerToday.length
+    ? Math.round(accsWithBrokerToday.reduce((s, a) => s + Number(a.broker_position_pnl || 0), 0) * 100) / 100
+    : tToday.reduce((a, t) => a + tradePnl(t), 0);
+  const pnlToday = (OVERVIEW_PNL && OVERVIEW_PNL.pnl_today !== undefined && OVERVIEW_PNL.pnl_today !== null)
+    ? Number(OVERVIEW_PNL.pnl_today)
+    : fallbackTodayPnl;
+  const pnlAllTime = (OVERVIEW_PNL && OVERVIEW_PNL.pnl_all_time !== undefined && OVERVIEW_PNL.pnl_all_time !== null)
+    ? Number(OVERVIEW_PNL.pnl_all_time)
+    : all.total;
+  const todayTradesCnt = (OVERVIEW_PNL && OVERVIEW_PNL.today_trades !== undefined) ? OVERVIEW_PNL.today_trades : tToday.length;
+  const activeAccsToday = (OVERVIEW_PNL && OVERVIEW_PNL.active_accounts_today !== undefined) ? OVERVIEW_PNL.active_accounts_today : accsWithBrokerToday.length;
+  const totalDaysCnt = (OVERVIEW_PNL && OVERVIEW_PNL.trading_days !== undefined) ? OVERVIEW_PNL.trading_days : all.days;
+  const totalAccsCnt = (OVERVIEW_PNL && OVERVIEW_PNL.total_accounts !== undefined) ? OVERVIEW_PNL.total_accounts : (S.accounts || []).length;
   const cnt = s => S.traders.filter(t => t.status === s).length;
   return `
     <div class="grid k3" style="gap:16px;margin-bottom:16px">
@@ -1396,8 +1410,8 @@ function renderOverviewKpiBoxHtml(){
       ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
     </div>
     <div class="grid k3" style="gap:16px">
-      ${kpi('P&L today', inrS(pnlToday), tToday.length+' trades', cls(pnlToday))}
-      ${kpi('P&L all time', inrS(all.total), all.days+' trading days', cls(all.total))}
+      ${kpi('P&L today', fmtInrExact(pnlToday.toFixed(2)), `${activeAccsToday} accounts · ${todayTradesCnt} trades`, cls(pnlToday))}
+      ${kpi('P&L all time', fmtInrExact(pnlAllTime.toFixed(2)), `${totalDaysCnt} trading days · ${totalAccsCnt} accounts`, cls(pnlAllTime))}
       ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
     </div>`;
 }
