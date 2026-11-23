@@ -1188,10 +1188,7 @@ function renderOverviewFinancialCardsHtml(aid){
     const feedIst = isMtm && snap?.last_feed_ist ? snap.last_feed_ist : null;
 
     let foot = '';
-    if(!isMtm && cardData?._isCfFifo){
-      const bMtmFmt = fmtInrExact(cardData._brokerMtm);
-      foot = `Full FIFO (carry-fwd)${bMtmFmt ? ' · Broker Day MTM ' + bMtmFmt : ''}`;
-    } else if(loading && !snap){
+    if(loading && !snap){
       foot = 'Fetching PositionBook…';
     } else if(isStale && lastUpd){
       foot = `Sync: ${esc(lastUpd)} · <b style="color:#b45309">${st === 'REAUTH_REQUIRED' ? 'REAUTH' : 'STALE'}</b>`;
@@ -1221,20 +1218,9 @@ function renderOverviewFinancialCardsHtml(aid){
     </div>`;
   };
 
-  const cfClosedToday = (S.trades || []).filter(x => !x.open && x.account === aid && (x.exitDate || x.date) === TODAY && x.date && x.date < TODAY);
-  const todayClosedAcc = cfClosedToday.length ? (S.trades || []).filter(x => !x.open && x.account === aid && (x.exitDate || x.date) === TODAY) : [];
-  const todayFinalRep = (DAILY_REPORTS || []).find(r => r.account === aid && r.date === TODAY && (r.status === 'FINALIZED' || r.status === 'ARCHIVED'));
-  const useFullFifoPnl = cfClosedToday.length > 0 && (todayClosedAcc.length > 0 || Boolean(todayFinalRep));
-  const fullRealizedVal = useFullFifoPnl
-    ? String((todayFinalRep ? Number(todayFinalRep.realized_pnl || 0) : Math.round(todayClosedAcc.reduce((s, x) => s + tradePnl(x), 0) * 100) / 100).toFixed(2))
-    : null;
-  const pnlCardData = useFullFifoPnl
-    ? { ...(snap?.pnl || {}), value: fullRealizedVal, status: snap?.pnl?.status || 'LIVE', _brokerMtm: snap?.pnl?.value ?? null, _isCfFifo: true }
-    : (snap?.pnl || null);
-
   return `
-    ${buildCard('REALIZED P&amp;L', 'Booked', pnlCardData, false)}
-    ${buildCard('UNREALIZED MTM', 'Open exposure', snap?.mtm || null, true)}
+    ${buildCard('POSITION P&amp;L', 'Total P&amp;L', snap?.pnl || null, false)}
+    ${buildCard('TOTAL MTM', 'Day MTM', snap?.mtm || null, true)}
   `;
 }
 
@@ -1792,34 +1778,20 @@ V.report = () => {
   const closedTr = tr.filter(x => !x.open);
   const openTr = tr.filter(x => x.open);
   const closedPnl = Math.round(closedTr.reduce((s, x) => s + tradePnl(x), 0) * 100) / 100;
-  // Priority 2: Keep broker-reported PositionBook P&L (rpnl + urmtom) clearly distinguished from FIFO closed-trade P&L
+  // Exact MYNT PositionBook values: Position P&L (Total P&L) and Total MTM
   const brokerAccs = range === 'today' ? tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined) : [];
   const hasBrokerToday = brokerAccs.length > 0;
-  const brokerRpnlToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_rpnl || 0), 0) * 100) / 100 : null;
-  const brokerUrmtomToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_urmtom || 0), 0) * 100) / 100 : null;
-  const brokerTotalToday = hasBrokerToday ? Math.round((brokerRpnlToday + brokerUrmtomToday) * 100) / 100 : null;
+  const brokerPositionPnlToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_position_pnl ?? a.broker_total_pnl ?? a.broker_rpnl ?? 0), 0) * 100) / 100 : null;
+  const brokerTotalMtmToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_total_mtm ?? a.broker_total_pnl ?? (Number(a.broker_rpnl || 0) + Number(a.broker_urmtom || 0))), 0) * 100) / 100 : null;
 
-  const todayFinalizedMeta = (range === 'today' && mAll.dayMeta && mAll.dayMeta[TODAY] && mAll.dayMeta[TODAY].finalized_at) ? mAll.dayMeta[TODAY] : null;
-  const hasCfClosedToday = range === 'today' && closedTr.some(x => x.date && x.date < TODAY);
-  const useFifoToday = Boolean(todayFinalizedMeta) || (hasCfClosedToday && closedTr.length > 0);
-
-  const dispRealised = useFifoToday
-    ? (todayFinalizedMeta ? todayFinalizedMeta.realized_pnl : closedPnl)
-    : (hasBrokerToday ? brokerRpnlToday : closedPnl);
-  const dispTotal = useFifoToday
-    ? (todayFinalizedMeta ? todayFinalizedMeta.total_pnl : Math.round((closedPnl + (brokerUrmtomToday || 0)) * 100) / 100)
-    : (hasBrokerToday ? brokerTotalToday : m.total);
-  const fifoDiff = hasBrokerToday ? Math.round((brokerRpnlToday - dispRealised) * 100) / 100 : 0;
-  const totalSub = useFifoToday
-    ? `${todayFinalizedMeta ? 'EOD Finalized' : 'Full FIFO + MTM'} · ${m.n} trades`
-    : (hasBrokerToday
-      ? `Broker (MTM ${inrS(brokerUrmtomToday)}) · ${m.n} trades`
-      : (m.n + ' trades'));
-  const realisedSub = useFifoToday
-    ? (hasBrokerToday && Math.abs(fifoDiff) >= 1 ? `Full FIFO (${closedTr.length} closed) · Broker Day MTM ${inrS(brokerRpnlToday)}` : `Full FIFO · ${closedTr.length} closed`)
-    : (hasBrokerToday
-      ? (Math.abs(fifoDiff) >= 1 ? `Broker Realised · FIFO ${inrS(closedPnl)}` : `Broker Realised · ${closedTr.length} closed`)
-      : (closedTr.length + ' closed trades'));
+  const dispTotal = hasBrokerToday ? brokerTotalMtmToday : m.total;
+  const dispRealised = hasBrokerToday ? brokerPositionPnlToday : closedPnl;
+  const totalSub = hasBrokerToday
+    ? `MYNT Total MTM · ${m.n} trades`
+    : (m.n + ' trades');
+  const realisedSub = hasBrokerToday
+    ? `MYNT Position P&L · ${closedTr.length} closed`
+    : (closedTr.length + ' closed trades');
 
   const staleAcc = tAccounts.find(a => a.is_stale || a.link === 'Login expired' || a.link === 'REAUTH_REQUIRED');
   const lastSyncStr = tAccounts.map(a => a.last_sync_at).filter(Boolean).sort().pop() || STATUS.poll?.last || '';
@@ -1829,7 +1801,7 @@ V.report = () => {
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div style="font-size:12.5px;color:${tr.length || hasBrokerToday ? 'var(--text)' : 'var(--muted)'}">
-        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length || hasBrokerToday ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>${useFifoToday?'Full Realised':(hasBrokerToday?'Broker Realised':'Realised')} P&L: <span class="${cls(dispRealised)}">${inr(dispRealised)}</span></b>${hasBrokerToday && Math.abs(fifoDiff)>=1 ? (useFifoToday ? ` · <span class="muted">Broker Day MTM: <b>${inr(brokerRpnlToday)}</b></span>` : ` · <span class="muted">FIFO Closed (${closedTr.length}): <b>${inr(closedPnl)}</b></span>`) : ''}${hasBrokerToday ? ` · <b>Open MTM: <span class="${cls(brokerUrmtomToday)}">${inr(brokerUrmtomToday)}</span></b>` : ''} · <b>Total P&L: <span class="${dispTotal>=0?'pos':'neg'}">${inr(dispTotal)}</span></b>` : '0 trades fetched so far today.'}
+        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length || hasBrokerToday ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>Position P&L: <span class="${cls(dispRealised)}">${fmtInrExact(dispRealised.toFixed(2))}</span></b> · <b>Total MTM: <span class="${cls(dispTotal)}">${fmtInrExact(dispTotal.toFixed(2))}</span></b>` : '0 trades fetched so far today.'}
         ${staleWarning}
       </div>
       ${canEdit()?`<button class="btn sm pri" onclick="onTraderChange('${t.id}', true)">🔄 Fetch Live Zebu</button>`:''}
@@ -1845,8 +1817,8 @@ V.report = () => {
   accBar +
   todaySyncBar +
   `<div class="grid k7">
-    ${kpi('Total P&L', inrS(dispTotal), totalSub, cls(dispTotal))}
-    ${kpi('P&L', inrS(dispRealised), realisedSub, cls(dispRealised))}
+    ${kpi(range==='today' && hasBrokerToday ? 'Total P&L (MTM)' : 'Total P&L', range==='today' && hasBrokerToday ? fmtInrExact(dispTotal.toFixed(2)) : inrS(dispTotal), totalSub, cls(dispTotal))}
+    ${kpi(range==='today' && hasBrokerToday ? 'Position P&L' : 'P&L', range==='today' && hasBrokerToday ? fmtInrExact(dispRealised.toFixed(2)) : inrS(dispRealised), realisedSub, cls(dispRealised))}
     ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
     ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
     ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
@@ -1888,14 +1860,12 @@ function calendar(m){
   const t = trader(SEL.trader);
   const tAccounts = S.accounts.filter(a => a.id === SEL.trader || a.zebu_uid === SEL.trader || a.trader === SEL.trader);
   const bAccs = tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined);
-  const cfClosedToday = S.trades.some(x => !x.open && (x.account === SEL.trader || tAccounts.some(a => a.id === x.account)) && (x.exitDate || x.date) === TODAY && x.date && x.date < TODAY);
-  if(bAccs.length && !cfClosedToday && (!meta[TODAY] || !meta[TODAY].finalized_at)){
-    const bRpnl = Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_rpnl||0),0)*100)/100;
-    const bUrm = Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_urmtom||0),0)*100)/100;
-    const bTot = Math.round((bRpnl + bUrm)*100)/100;
-    const existing = meta[TODAY] || { realized_pnl: bRpnl, unrealized_pnl: bUrm, total_pnl: bTot, net_pnl: bRpnl, charges: 0, trades: 0, wins: 0, losses: 0, status: 'LIVE' };
-    meta[TODAY] = { ...existing, total_pnl: bTot, unrealized_pnl: bUrm };
-    map[TODAY] = bTot;
+  if(bAccs.length){
+    const bPosPnl = Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_position_pnl ?? a.broker_total_pnl ?? a.broker_rpnl ?? 0),0)*100)/100;
+    const bTotMtm = Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_total_mtm ?? a.broker_total_pnl ?? (Number(a.broker_rpnl||0)+Number(a.broker_urmtom||0))),0)*100)/100;
+    const existing = meta[TODAY] || { realized_pnl: bPosPnl, unrealized_pnl: bTotMtm, total_pnl: bPosPnl, net_pnl: bPosPnl, charges: 0, trades: 0, wins: 0, losses: 0, status: 'LIVE' };
+    meta[TODAY] = { ...existing, total_pnl: bPosPnl, realized_pnl: bPosPnl, unrealized_pnl: bTotMtm };
+    map[TODAY] = bPosPnl;
   }
 
   // Span from earliest recorded date (or trader start date) all the way up to TODAY
@@ -2046,11 +2016,10 @@ function openCalendarDay(dateStr){
     const fifoReal = Math.round(sortedTrades.reduce((s,x)=>s+tradePnl(x),0) * 100) / 100;
     charges = Math.round(sortedTrades.reduce((s,x)=>s+Number(x.charges||0),0) * 100) / 100;
     netPnl = Math.round((fifoReal - charges) * 100) / 100;
-    // For Today live view before EOD lock, match Trader Report Total P&L (Broker Total if pure intraday, FIFO if carry-forward closed today)
-    const hasCfInDay = dateStr === TODAY && sortedTrades.some(x => !x.open && x.date && x.date < TODAY);
-    const bAccs = (dateStr === TODAY && !hasCfInDay) ? tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined) : [];
+    // For Today view, match exact MYNT Position P&L if available
+    const bAccs = dateStr === TODAY ? tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined) : [];
     totalPnl = bAccs.length
-      ? Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_rpnl||0)+Number(a.broker_urmtom||0),0) * 100) / 100
+      ? Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_position_pnl ?? a.broker_total_pnl ?? (Number(a.broker_rpnl||0)+Number(a.broker_urmtom||0))),0) * 100) / 100
       : fifoReal;
     wins = sortedTrades.filter(x=>tradePnl(x)>0).length;
     losses = sortedTrades.filter(x=>tradePnl(x)<=0).length;
