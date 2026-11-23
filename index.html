@@ -1307,9 +1307,10 @@ function renderOverviewFundsCardsHtml(){
 
   const makeCard = (title, subtitle, rawVal, icon='💳') => {
     const formatted = _fmtFundsInr(rawVal);
-    const displayVal = formatted !== null ? formatted : (loading ? 'Loading…' : 'Data unavailable');
+    const isFetching = loading || st === 'LOADING';
+    const displayVal = formatted !== null ? formatted : (isFetching ? 'Loading…' : 'Data unavailable');
     let foot = '';
-    if(loading && !d){
+    if(isFetching && formatted === null){
       foot = 'Fetching Limits…';
     } else if(st === 'UNAVAILABLE'){
       foot = esc(d?.error || 'Data unavailable');
@@ -1355,8 +1356,16 @@ async function loadOverviewFundsSummary(force=false){
   updateOverviewFundsCards();
   try {
     const res = await API.fundsSummary(force);
-    OV_FUNDS_CACHE = res;
-    saveLiveCache();
+    if(res && res.status === 'LOADING'){
+      // Backend is warming 42-account Zebu Limits in background; re-check cleanly in 3s without showing Data unavailable
+      if(!OV_FUNDS_CACHE || OV_FUNDS_CACHE.available_funds === null){
+        OV_FUNDS_CACHE = res;
+      }
+      setTimeout(()=>{ if(USER && VIEW === 'overview') loadOverviewFundsSummary(false); }, 3000);
+    } else {
+      OV_FUNDS_CACHE = res;
+      saveLiveCache();
+    }
   } catch(e){
     const prev = OV_FUNDS_CACHE;
     if(prev && prev.available_funds !== null && prev.available_funds !== undefined){
