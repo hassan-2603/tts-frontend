@@ -338,7 +338,9 @@ function saveLiveCache(){
     try { if(localStorage.getItem(LIVE_CACHE_KEY)) return; } catch(e){}
   }
   const ovFin = (typeof OV_FIN_CACHE !== 'undefined' && OV_FIN_CACHE) ? OV_FIN_CACHE : {};
-  const ovFunds = (typeof OV_FUNDS_CACHE !== 'undefined') ? OV_FUNDS_CACHE : null;
+  const ovFunds = (typeof OV_FUNDS_CACHE !== 'undefined' && OV_FUNDS_CACHE && OV_FUNDS_CACHE.available_funds !== null && OV_FUNDS_CACHE.available_funds !== undefined && OV_FUNDS_CACHE.status !== 'UNAVAILABLE' && OV_FUNDS_CACHE.status !== 'LOADING')
+    ? { ...OV_FUNDS_CACHE, _fromStorage: undefined }
+    : null;
   const payload = {
     S,
     STATUS,
@@ -383,8 +385,8 @@ function loadLiveCache(){
       if(cached.OV_FIN_CACHE && typeof OV_FIN_CACHE !== 'undefined'){
         Object.assign(OV_FIN_CACHE, cached.OV_FIN_CACHE);
       }
-      if(cached.OV_FUNDS_CACHE && typeof OV_FUNDS_CACHE !== 'undefined'){
-        OV_FUNDS_CACHE = cached.OV_FUNDS_CACHE;
+      if(cached.OV_FUNDS_CACHE && typeof OV_FUNDS_CACHE !== 'undefined' && cached.OV_FUNDS_CACHE.available_funds !== null && cached.OV_FUNDS_CACHE.available_funds !== undefined && cached.OV_FUNDS_CACHE.status !== 'UNAVAILABLE'){
+        OV_FUNDS_CACHE = { ...cached.OV_FUNDS_CACHE, _fromStorage: true };
       }
       invalidate();
       return true;
@@ -3644,7 +3646,8 @@ function bind(){
   if(VIEW === 'overview' && LIVE && USER && SEL.ovAccount && !OV_FIN_CACHE[SEL.ovAccount] && !OV_FIN_LOADING[SEL.ovAccount]){
     loadOverviewFinancialSummary(SEL.ovAccount, false);
   }
-  if(VIEW === 'overview' && LIVE && USER && !OV_FUNDS_CACHE && !OV_FUNDS_LOADING){
+  const needFundsFetch = !OV_FUNDS_CACHE || OV_FUNDS_CACHE._fromStorage || OV_FUNDS_CACHE.status === 'UNAVAILABLE' || OV_FUNDS_CACHE.status === 'LOADING' || OV_FUNDS_CACHE.available_funds === null || OV_FUNDS_CACHE.available_funds === undefined;
+  if(VIEW === 'overview' && LIVE && USER && needFundsFetch && !OV_FUNDS_LOADING){
     loadOverviewFundsSummary(false);
   }
   // Priority 3: Automatically load full historical trades (>180 days) when viewing All, Test period, or older Custom ranges
