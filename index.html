@@ -1500,7 +1500,7 @@ V.traders = () => {
   <div class="card" style="margin-top:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <h3 style="margin:0">Broker accounts (${S.accounts.length})</h3>
-      ${canEdit()?`<div><button class="btn danger sm" id="btnDelAccounts" style="display:${selAccCount?'inline-block':'none'};margin-right:6px" onclick="deleteSelectedAccounts()">Delete selected accounts (<span id="selAccountsCount">${selAccCount}</span>)</button><button class="btn sm pri" onclick="editAccount()">+ Add account</button></div>`:''}
+      ${canEdit()?`<div><button class="btn danger sm" id="btnDelAccounts" style="display:${selAccCount?'inline-block':'none'};margin-right:6px" onclick="deleteSelectedAccounts()">Delete selected accounts (<span id="selAccountsCount">${selAccCount}</span>)</button>${LIVE?`<button class="btn sm btn-soft-green" id="btnReconnectAll" style="margin-right:6px" onclick="reconnectAllAccounts(this)">Reconnect all accounts</button>`:''}<button class="btn sm pri" onclick="editAccount()">+ Add account</button></div>`:''}
     </div>
     <div class="tbl-wrap"><table><tr>${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllAccounts" onchange="toggleSelectAllAccounts(this.checked)" title="Select all broker accounts"></th>`:''}<th>Account</th><th>Broker</th>${LIVE?'<th>Zebu UID</th><th>Link status</th>':''}<th>Assigned trader</th><th class="n">Trades</th>${canEdit()?'<th style="text-align:right">Actions</th>':''}</tr>
       ${S.accounts.map(a=>{ const isAccSel = SELECTED_ACCOUNT_IDS.has(a.id); return `<tr>
@@ -2719,6 +2719,30 @@ function saveTrader(id){
   const old=id?trader(id):null; if(old) t.extended=old.extended;
   if(old) Object.assign(old,t); else { S.traders.push(t); S.rules[t.id]={...DEFAULT_RULES}; S.ruleLog.push({trader:t.id,at:TODAY+' '+new Date().toTimeString().slice(0,5),by:USER,change:'Rule book created (defaults)'}); }
   save(); liveCall(()=>API.saveTrader(t)); closeModal(); render(); toast('Trader saved');
+}
+async function reconnectAllAccounts(btn){
+  if(!LIVE || !canEdit()) return;
+  const origTxt = 'Reconnect all accounts';
+  if(btn){ btn.disabled = true; btn.textContent = 'Reconnecting…'; }
+  toast('Reconnecting all Zebu accounts one by one…');
+  try {
+    let st = await API.req('/accounts/reconnect-all', { method: 'POST', timeoutMs: 20000 });
+    while(st && st.running){
+      const bEl = document.getElementById('btnReconnectAll');
+      if(bEl){ bEl.disabled = true; bEl.textContent = `Reconnecting ${st.processed||0}/${st.total||0}…`; }
+      await new Promise(r => setTimeout(r, 1500));
+      st = await API.req('/accounts/reconnect-all/status', { timeoutMs: 15000 });
+    }
+    OV_FUNDS_CACHE = null;
+    await API.syncAll();
+    render();
+    toast(`Reconnected ${st.connected||0}/${st.total||0} accounts` + (st.skipped ? ` · ${st.skipped} skipped` : ''));
+  } catch(e){
+    toast('Reconnect all: ' + (e.message || 'failed'));
+  } finally {
+    const bEl = document.getElementById('btnReconnectAll');
+    if(bEl){ bEl.disabled = false; bEl.textContent = origTxt; }
+  }
 }
 function editAccount(id){
   const a=id?account(id):{id:'AC-'+String(S.accounts.length+1).padStart(2,'0'),name:'Account '+(S.accounts.length+1),broker:LIVE?'Zebu':'Angel One',trader:S.traders[0]?.id,zebu_uid:'',zebu_actid:'',zebu_vc:''};
