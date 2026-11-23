@@ -1220,8 +1220,8 @@ function renderOverviewFinancialCardsHtml(aid){
   };
 
   return `
-    ${buildCard('POSITION P&amp;L', 'Total P&amp;L', snap?.pnl || null, false)}
-    ${buildCard('TOTAL MTM', 'Day MTM', snap?.mtm || null, true)}
+    ${buildCard('REALIZED P&amp;L', 'Booked', snap?.pnl || null, false)}
+    ${buildCard('UNREALIZED MTM', 'Open exposure', snap?.mtm || null, true)}
   `;
 }
 
@@ -1813,19 +1813,19 @@ V.report = () => {
   const closedTr = tr.filter(x => !x.open);
   const openTr = tr.filter(x => x.open);
   const closedPnl = Math.round(closedTr.reduce((s, x) => s + tradePnl(x), 0) * 100) / 100;
-  // Exact MYNT PositionBook values: Position P&L (Total P&L) and Total MTM
+  // Booked (Realized) P&L and Open Unrealized MTM from Zebu PositionBook
   const brokerAccs = range === 'today' ? tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined) : [];
   const hasBrokerToday = brokerAccs.length > 0;
-  const brokerPositionPnlToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_position_pnl ?? a.broker_total_pnl ?? a.broker_rpnl ?? 0), 0) * 100) / 100 : null;
-  const brokerTotalMtmToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_total_mtm ?? a.broker_total_pnl ?? (Number(a.broker_rpnl || 0) + Number(a.broker_urmtom || 0))), 0) * 100) / 100 : null;
+  const brokerPositionPnlToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_position_pnl ?? a.broker_rpnl ?? 0), 0) * 100) / 100 : null;
+  const brokerTotalMtmToday = hasBrokerToday ? Math.round(brokerAccs.reduce((s, a) => s + Number(a.broker_total_mtm ?? a.broker_urmtom ?? 0), 0) * 100) / 100 : null;
 
   const dispTotal = hasBrokerToday ? brokerTotalMtmToday : m.total;
   const dispRealised = hasBrokerToday ? brokerPositionPnlToday : closedPnl;
   const totalSub = hasBrokerToday
-    ? `MYNT Total MTM · ${m.n} trades`
+    ? `Open exposure · ${m.n} trades`
     : (m.n + ' trades');
   const realisedSub = hasBrokerToday
-    ? `MYNT Position P&L · ${closedTr.length} closed`
+    ? `Booked P&L · ${closedTr.length} closed`
     : (closedTr.length + ' closed trades');
 
   const staleAcc = tAccounts.find(a => a.is_stale || a.link === 'Login expired' || a.link === 'REAUTH_REQUIRED');
@@ -1836,7 +1836,7 @@ V.report = () => {
   const todaySyncBar = range==='today' ? `
     <div class="row" style="margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div style="font-size:12.5px;color:${tr.length || hasBrokerToday ? 'var(--text)' : 'var(--muted)'}">
-        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length || hasBrokerToday ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>Position P&L: <span class="${cls(dispRealised)}">${fmtInrExact(dispRealised.toFixed(2))}</span></b> · <b>Total MTM: <span class="${cls(dispTotal)}">${fmtInrExact(dispTotal.toFixed(2))}</span></b>` : '0 trades fetched so far today.'}
+        📅 <b>Today's Trades (${fmtDate(TODAY)})</b>: ${tr.length || hasBrokerToday ? `<span class="pos" style="font-weight:700">${tr.length} trades recorded</span>${openTr.length ? ` · <span class="amb">${openTr.length} open position${openTr.length>1?'s':''} active</span>` : ''} · <b>Booked P&L: <span class="${cls(dispRealised)}">${fmtInrExact(dispRealised.toFixed(2))}</span></b> · <b>Open MTM: <span class="${cls(dispTotal)}">${fmtInrExact(dispTotal.toFixed(2))}</span></b>` : '0 trades fetched so far today.'}
         ${staleWarning}
       </div>
       ${canEdit()?`<button class="btn sm pri" onclick="onTraderChange('${t.id}', true)">🔄 Fetch Live Zebu</button>`:''}
@@ -1852,8 +1852,8 @@ V.report = () => {
   accBar +
   todaySyncBar +
   `<div class="grid k7">
-    ${kpi(range==='today' && hasBrokerToday ? 'Total P&L (MTM)' : 'Total P&L', range==='today' && hasBrokerToday ? fmtInrExact(dispTotal.toFixed(2)) : inrS(dispTotal), totalSub, cls(dispTotal))}
-    ${kpi(range==='today' && hasBrokerToday ? 'Position P&L' : 'P&L', range==='today' && hasBrokerToday ? fmtInrExact(dispRealised.toFixed(2)) : inrS(dispRealised), realisedSub, cls(dispRealised))}
+    ${kpi(range==='today' && hasBrokerToday ? 'Open MTM' : 'Total P&L', range==='today' && hasBrokerToday ? fmtInrExact(dispTotal.toFixed(2)) : inrS(dispTotal), totalSub, cls(dispTotal))}
+    ${kpi(range==='today' && hasBrokerToday ? 'Booked P&L' : 'P&L', range==='today' && hasBrokerToday ? fmtInrExact(dispRealised.toFixed(2)) : inrS(dispRealised), realisedSub, cls(dispRealised))}
     ${kpi('Accuracy', pct(m.accuracy), 'winning ÷ total trades')}
     ${kpi('Risk : Reward', isFinite(m.rr)?'1 : '+m.rr.toFixed(1):'—', 'avg win ÷ avg loss')}
     ${kpi('Max drawdown', inr(m.mdd), pct(m.mddPct,1)+' of capital', 'neg')}
