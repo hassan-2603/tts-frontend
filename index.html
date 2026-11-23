@@ -1676,33 +1676,17 @@ V.trades = () => {
   const sortBtn = col => ` <button type="button" class="btn sm" style="padding:1px 5px;font-size:10px;line-height:1.1;margin-left:3px;vertical-align:middle" onclick="toggleTradeSort('${col}')" title="${arrowTitle}">${arrowChar}</button>`;
   const shown=list.slice(0,400);
   const grossTot = Math.round(list.reduce((a,t)=>a+tradePnl(t),0) * 100) / 100;
-  const netTot = Math.round(list.reduce((a,t)=>a+netTradePnl(t),0) * 100) / 100;
-  const isTodayOnly = Boolean(F.from && F.to && F.from === TODAY && F.to === TODAY);
   const isAllUnfiltered = !F.trader && !F.flag && !F.from && !F.to;
-  let dispPnl = grossTot, pnlLabel = 'Realised P&L';
-  if(isTodayOnly && !F.flag){
-    if(!F.trader && OVERVIEW_PNL && OVERVIEW_PNL.pnl_today !== undefined && OVERVIEW_PNL.pnl_today !== null){
-      dispPnl = Number(OVERVIEW_PNL.pnl_today);
-      pnlLabel = 'Position P&L (Today)';
-    } else if(F.trader){
-      const selAccs = (S.accounts || []).filter(a => a.id === F.trader || a.zebu_uid === F.trader || a.trader === F.trader);
-      const bSel = selAccs.filter(a => a.broker_position_pnl !== null && a.broker_position_pnl !== undefined);
-      if(bSel.length){
-        dispPnl = Math.round(bSel.reduce((s,a)=>s+Number(a.broker_position_pnl||0),0) * 100) / 100;
-        pnlLabel = 'Position P&L (Today)';
-      }
-    }
-  } else if(isAllUnfiltered && OVERVIEW_PNL && OVERVIEW_PNL.pnl_all_time !== undefined && OVERVIEW_PNL.pnl_all_time !== null){
-    dispPnl = Number(OVERVIEW_PNL.pnl_all_time);
-    pnlLabel = 'All-time P&L';
-  }
+  const dispPnl = (isAllUnfiltered && OVERVIEW_PNL && OVERVIEW_PNL.pnl_all_time !== undefined && OVERVIEW_PNL.pnl_all_time !== null)
+    ? Number(OVERVIEW_PNL.pnl_all_time)
+    : grossTot;
   const selCount = SELECTED_TRADE_IDS.size;
   return header('Trade log','Closed trades — exact broker execution records', `${LIVE&&canEdit()?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn btn-soft-green" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
   `<div class="card" style="margin-bottom:14px"><div class="row">${traderSelect('tfTr',F.trader,true)}
     <select id="tfFlag"><option value="">All trades</option><option value="flag" ${F.flag==='flag'?'selected':''}>With red flag</option><option value="ok" ${F.flag==='ok'?'selected':''}>Clean (OK)</option></select>
     <input type="date" id="tfFrom" value="${F.from}"> → <input type="date" id="tfTo" value="${F.to}">
     <button class="btn sm" onclick="applyTF()">Apply</button><button class="btn sm" onclick="SEL.tradeFilter={trader:val('tfTr'),flag:val('tfFlag'),from:TODAY,to:TODAY};render()">Today</button><button class="btn sm" onclick="SEL.tradeFilter={trader:'',flag:'',from:'',to:''};render()">Clear</button>
-    <div style="flex:1"></div><span class="muted">${list.length} closed trades · ${pnlLabel} <b class="${cls(dispPnl)}">${fmtInrExact(dispPnl.toFixed(2))}</b> · Net <b class="${cls(netTot)}">${fmtInrExact(netTot.toFixed(2))}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
+    <div style="flex:1"></div><span class="muted">${list.length} closed trades · All-time P&L <b class="${cls(dispPnl)}">${fmtInrExact(dispPnl.toFixed(2))}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
   <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr>
     ${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTrades" onchange="toggleSelectAllTrades(this.checked)" title="Select all shown"></th>`:''}
     <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L${sortBtn('netPnl')}</th><th>Instrument Name</th><th>Expiry Date</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points${sortBtn('points')}</th><th class="n">Realized P&L${sortBtn('realizedPnl')}</th><th>Check</th>
@@ -2039,23 +2023,22 @@ function openCalendarDay(dateStr){
   const repLosses = reps.reduce((s,r)=>s+Number(r.losing_trades||0),0);
   const repClosed = reps.reduce((s,r)=>s+Number(r.closed_trades||0),0);
 
-  let totalPnl, netPnl, charges, wins, losses, count;
+  let openMtm, bookedPnl, wins, losses, count;
   if(reps.length){
-    totalPnl = Math.round((repRealized + repUnrealized) * 100) / 100;
-    netPnl = Math.round(repNet * 100) / 100;
-    charges = Math.round(repCharges * 100) / 100;
+    openMtm = Math.round(repUnrealized * 100) / 100;
+    bookedPnl = Math.round(repRealized * 100) / 100;
     wins = repWins;
     losses = repLosses;
     count = repClosed || sortedTrades.length;
   } else {
     const fifoReal = Math.round(sortedTrades.reduce((s,x)=>s+tradePnl(x),0) * 100) / 100;
-    charges = Math.round(sortedTrades.reduce((s,x)=>s+Number(x.charges||0),0) * 100) / 100;
-    netPnl = Math.round((fifoReal - charges) * 100) / 100;
-    // For Today view, match exact MYNT Position P&L if available
     const bAccs = dateStr === TODAY ? tAccounts.filter(a => a.broker_rpnl !== null && a.broker_rpnl !== undefined) : [];
-    totalPnl = bAccs.length
-      ? Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_position_pnl ?? a.broker_total_pnl ?? (Number(a.broker_rpnl||0)+Number(a.broker_urmtom||0))),0) * 100) / 100
+    bookedPnl = bAccs.length
+      ? Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_position_pnl ?? a.broker_rpnl ?? 0),0) * 100) / 100
       : fifoReal;
+    openMtm = bAccs.length
+      ? Math.round(bAccs.reduce((s,a)=>s+Number(a.broker_total_mtm ?? a.broker_urmtom ?? 0),0) * 100) / 100
+      : 0;
     wins = sortedTrades.filter(x=>tradePnl(x)>0).length;
     losses = sortedTrades.filter(x=>tradePnl(x)<=0).length;
     count = sortedTrades.length;
@@ -2067,10 +2050,10 @@ function openCalendarDay(dateStr){
 
   modal(`<h2>Daily P&L Summary · ${fmtDate(dateStr)} (${dateStr}) · ${esc(t?.name || tid)} ${statusBadge}</h2>
     <div class="grid k4">
-      ${kpi('Total P&L', inr(totalPnl), count + ' closed trades', cls(totalPnl))}
-      ${kpi('Net P&L', inr(netPnl), 'Charges: ' + inr(charges), cls(netPnl))}
+      ${kpi('Open MTM', fmtInrExact(openMtm.toFixed(2)), 'Open exposure', cls(openMtm))}
+      ${kpi('Booked P&L', fmtInrExact(bookedPnl.toFixed(2)), count + ' closed trades', cls(bookedPnl))}
       ${kpi('Wins / Losses', `${wins}W / ${losses}L`, count ? pct(wins/count*100,1) + ' win rate' : '—')}
-      ${kpi('Status', statusStr, firstRep?.finalized_at ? 'Immutable · Locked ' + fmtIST(firstRep.finalized_at, true) : (dateStr < TODAY ? 'Immutable record' : 'Live session'))}
+      ${kpi('Status', statusStr, firstRep?.finalized_at ? 'Immutable · Locked ' + fmtIST(firstRep.finalized_at, true) : (dateStr < TODAY ? 'Immutable record' : 'Live until 11:55 PM IST'))}
     </div>
     <div class="card" style="margin-top:14px">
       <h3>Trades on ${fmtDate(dateStr)} <small>${sortedTrades.length} trade${sortedTrades.length===1?'':'s'}</small></h3>
