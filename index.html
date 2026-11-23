@@ -3632,7 +3632,7 @@ let WS_RETRY_DELAY = 2000;
 function getBackendWsUrl(){
   const qs = TOKEN ? ('?token=' + encodeURIComponent(TOKEN)) : '';
   if(location.host.includes('arthnetra.in') || location.host.includes('vercel.app')){
-    return 'wss://device-lenses-beverages-real.trycloudflare.com/api/ws' + qs;
+    return 'wss://api.arthnetra.in/api/ws' + qs;
   }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${location.host}/api/ws${qs}`;
