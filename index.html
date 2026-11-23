@@ -1674,14 +1674,35 @@ V.trades = () => {
   const arrowChar = TS.dir === 'desc' ? '▼' : '▲';
   const arrowTitle = TS.dir === 'desc' ? 'Click to sort increasing (low to high)' : 'Click to sort decreasing (high to low)';
   const sortBtn = col => ` <button type="button" class="btn sm" style="padding:1px 5px;font-size:10px;line-height:1.1;margin-left:3px;vertical-align:middle" onclick="toggleTradeSort('${col}')" title="${arrowTitle}">${arrowChar}</button>`;
-  const shown=list.slice(0,400), tot=list.reduce((a,t)=>a+netTradePnl(t),0);
+  const shown=list.slice(0,400);
+  const grossTot = Math.round(list.reduce((a,t)=>a+tradePnl(t),0) * 100) / 100;
+  const netTot = Math.round(list.reduce((a,t)=>a+netTradePnl(t),0) * 100) / 100;
+  const isTodayOnly = Boolean(F.from && F.to && F.from === TODAY && F.to === TODAY);
+  const isAllUnfiltered = !F.trader && !F.flag && !F.from && !F.to;
+  let dispPnl = grossTot, pnlLabel = 'Realised P&L';
+  if(isTodayOnly && !F.flag){
+    if(!F.trader && OVERVIEW_PNL && OVERVIEW_PNL.pnl_today !== undefined && OVERVIEW_PNL.pnl_today !== null){
+      dispPnl = Number(OVERVIEW_PNL.pnl_today);
+      pnlLabel = 'Position P&L (Today)';
+    } else if(F.trader){
+      const selAccs = (S.accounts || []).filter(a => a.id === F.trader || a.zebu_uid === F.trader || a.trader === F.trader);
+      const bSel = selAccs.filter(a => a.broker_position_pnl !== null && a.broker_position_pnl !== undefined);
+      if(bSel.length){
+        dispPnl = Math.round(bSel.reduce((s,a)=>s+Number(a.broker_position_pnl||0),0) * 100) / 100;
+        pnlLabel = 'Position P&L (Today)';
+      }
+    }
+  } else if(isAllUnfiltered && OVERVIEW_PNL && OVERVIEW_PNL.pnl_all_time !== undefined && OVERVIEW_PNL.pnl_all_time !== null){
+    dispPnl = Number(OVERVIEW_PNL.pnl_all_time);
+    pnlLabel = 'All-time P&L';
+  }
   const selCount = SELECTED_TRADE_IDS.size;
   return header('Trade log','Closed trades — exact broker execution records', `${LIVE&&canEdit()?`<button class="btn sm btn-soft-green" onclick="syncNow(this)" style="margin-right:6px">🔄 Sync from Zebu</button>`:''}${canEdit()?`<button class="btn btn-soft-green" onclick="importModal()">Import Excel / CSV</button><button class="btn" onclick="editTrade()">+ Add trade</button><button class="btn danger sm" id="btnDelTrades" style="display:${selCount?'inline-block':'none'};margin-left:6px" onclick="deleteSelectedTrades()">Delete selected (<span id="selTradesCount">${selCount}</span>)</button>`:''}<button class="btn" onclick="exportCSV('trades')">Export CSV</button>`) +
   `<div class="card" style="margin-bottom:14px"><div class="row">${traderSelect('tfTr',F.trader,true)}
     <select id="tfFlag"><option value="">All trades</option><option value="flag" ${F.flag==='flag'?'selected':''}>With red flag</option><option value="ok" ${F.flag==='ok'?'selected':''}>Clean (OK)</option></select>
     <input type="date" id="tfFrom" value="${F.from}"> → <input type="date" id="tfTo" value="${F.to}">
-    <button class="btn sm" onclick="applyTF()">Apply</button><button class="btn sm" onclick="SEL.tradeFilter={trader:'',flag:'',from:'',to:''};render()">Clear</button>
-    <div style="flex:1"></div><span class="muted">${list.length} closed trades · Net <b class="${cls(tot)}">${inrS(tot)}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
+    <button class="btn sm" onclick="applyTF()">Apply</button><button class="btn sm" onclick="SEL.tradeFilter={trader:val('tfTr'),flag:val('tfFlag'),from:TODAY,to:TODAY};render()">Today</button><button class="btn sm" onclick="SEL.tradeFilter={trader:'',flag:'',from:'',to:''};render()">Clear</button>
+    <div style="flex:1"></div><span class="muted">${list.length} closed trades · ${pnlLabel} <b class="${cls(dispPnl)}">${fmtInrExact(dispPnl.toFixed(2))}</b> · Net <b class="${cls(netTot)}">${fmtInrExact(netTot.toFixed(2))}</b>${list.length>400?' · showing latest 400':''}</span></div></div>
   <div class="card"><div class="tbl-wrap" style="max-height:640px"><table><tr>
     ${canEdit()?`<th style="width:36px;text-align:center"><input type="checkbox" id="chkAllTrades" onchange="toggleSelectAllTrades(this.checked)" title="Select all shown"></th>`:''}
     <th>Entry</th><th>Exit</th><th>Account</th><th class="n">Net P&L${sortBtn('netPnl')}</th><th>Instrument Name</th><th>Expiry Date</th><th>Side</th><th class="n">Lots</th><th class="n">Entry Px</th><th class="n">Exit Px</th><th class="n">Points${sortBtn('points')}</th><th class="n">Realized P&L${sortBtn('realizedPnl')}</th><th>Check</th>
