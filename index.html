@@ -1055,6 +1055,7 @@ function shell(inner){
       </div>
       <div style="font-size:12.5px;color:var(--mut)">
         Data: <b style="color:var(--tx)">${LIVE?'Live · Zebu':'Demo data'}</b>${LIVE&&STATUS.poll?.last?`<br><span id="sideSyncTime" style="font-size:11.5px">Sync: ${esc(STATUS.poll.last.slice(11,16))} IST</span>`:'<br><span id="sideSyncTime" style="font-size:11.5px"></span>'}
+        ${LIVE?`<div id="wsLiveIndicator" style="margin-top:6px">${renderWsLiveIndicator()}</div>`:''}
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.14);display:flex;justify-content:space-between;align-items:center">
         <span style="color:var(--mut);font-size:11.5px">Tracking only</span>
@@ -3680,6 +3681,27 @@ window.addEventListener('hashchange', ()=>{ const h=location.hash.slice(1); if(V
 try{ const h0=location.hash.slice(1); if(V[h0]) VIEW=h0; }catch(e){}
 let WS_CLIENT = null;
 let WS_RETRY_DELAY = 2000;
+let WS_CONN_STATE = 'disconnected'; // 'connected' | 'connecting' | 'disconnected'
+let WS_PING_TIMER = null;
+
+function renderWsLiveIndicator(){
+  const zebuAccs = (S && Array.isArray(S.accounts)) ? S.accounts.filter(a => (a.broker || 'Zebu') === 'Zebu') : [];
+  const rtCnt = zebuAccs.filter(a => a.ws_status === 'REAL-TIME').length;
+  const totalCnt = zebuAccs.length;
+  if(WS_CONN_STATE === 'connected'){
+    return `<span class="pill p-live" style="font-size:10.5px;padding:2px 8px" title="Real-time WebSocket connected to backend (${rtCnt}/${totalCnt} Zebu streams REAL-TIME)">● Live WS · ${rtCnt}/${totalCnt} Zebu</span>`;
+  }
+  if(WS_CONN_STATE === 'connecting'){
+    return `<span class="pill p-watch" style="font-size:10.5px;padding:2px 8px" title="Connecting real-time WebSocket to backend">● WS Connecting…</span>`;
+  }
+  return `<span class="pill p-stop" style="font-size:10.5px;padding:2px 8px" title="Real-time WebSocket disconnected — auto-reconnecting">○ WS Offline</span>`;
+}
+
+function updateWsLiveIndicator(){
+  const el = document.getElementById('wsLiveIndicator');
+  if(el) el.innerHTML = renderWsLiveIndicator();
+}
+
 function getBackendWsUrl(){
   const qs = TOKEN ? ('?token=' + encodeURIComponent(TOKEN)) : '';
   if(location.host.includes('arthnetra.in') || location.host.includes('vercel.app')){
@@ -3692,20 +3714,64 @@ function getBackendWsUrl(){
 function initDashboardWebSocket(){
   if(!LIVE || !USER || WS_CLIENT) return;
   try {
+    WS_CONN_STATE = 'connecting';
+    updateWsLiveIndicator();
     const wsUrl = getBackendWsUrl();
     WS_CLIENT = new WebSocket(wsUrl);
     WS_CLIENT.onopen = () => {
       WS_RETRY_DELAY = 2000;
+      WS_CONN_STATE = 'connected';
+      updateWsLiveIndicator();
+      if(WS_PING_TIMER) clearInterval(WS_PING_TIMER);
+      WS_PING_TIMER = setInterval(() => {
+        try { if(WS_CLIENT && WS_CLIENT.readyState === WebSocket.OPEN) WS_CLIENT.send('ping'); } catch(e){}
+      }, 25000);
     };
     let _lastWsMsg = 0;
     WS_CLIENT.onmessage = (event) => {
       try {
+        if(event.data === 'pong') return;
         const msg = JSON.parse(event.data);
         if(msg.type === 'force_logout'){
           try { WS_CLIENT.close(); } catch(e){}
           WS_CLIENT = null;
+          WS_CONN_STATE = 'disconnected';
+          if(WS_PING_TIMER){ clearInterval(WS_PING_TIMER); WS_PING_TIMER = null; }
           logout();
           toast(msg.reason ? `Signed out — ${msg.reason}` : 'Signed out — please sign in again');
+          return;
+        }
+        if(msg.type === 'ws_snapshot' && msg.accounts && S && Array.isArray(S.accounts)){
+          let changed = false;
+          for(const a of S.accounts){
+            if(msg.accounts[a.id] && a.ws_status !== msg.accounts[a.id]){
+              a.ws_status = msg.accounts[a.id];
+              changed = true;
+            }
+          }
+          updateWsLiveIndicator();
+          if(changed && VIEW === 'traders') render();
+          return;
+        }
+        if(msg.type === 'ws_status_updated' && msg.account_id && S && Array.isArray(S.accounts)){
+          const acc = S.accounts.find(a => a.id === msg.account_id);
+          if(acc){
+            acc.ws_status = msg.ws_status;
+            if(msg.ws_status === 'REAL-TIME'){
+              acc.link = 'Linked';
+              acc.is_stale = false;
+            }
+          }
+          updateWsLiveIndicator();
+          if(VIEW === 'traders') render();
+          return;
+        }
+        if(msg.type === 'zebu_order_update' && msg.account_id){
+          const side = msg.trantype ? ` ${msg.trantype}` : '';
+          const sym = msg.tsym || msg.account_id;
+          const st = msg.status || msg.reporttype || 'UPDATE';
+          toast(`Live Zebu (${msg.account_id}): ${sym}${side} · ${st}`);
+          refreshLive();
           return;
         }
         if(msg.type === 'financial_summary_updated' && msg.account_id){
@@ -3742,6 +3808,9 @@ function initDashboardWebSocket(){
     };
     WS_CLIENT.onclose = () => {
       WS_CLIENT = null;
+      WS_CONN_STATE = 'disconnected';
+      if(WS_PING_TIMER){ clearInterval(WS_PING_TIMER); WS_PING_TIMER = null; }
+      updateWsLiveIndicator();
       WS_RETRY_DELAY = Math.min(WS_RETRY_DELAY * 1.5, 30000);
       setTimeout(initDashboardWebSocket, WS_RETRY_DELAY);
     };
