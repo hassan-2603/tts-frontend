@@ -1040,7 +1040,7 @@ const NAV = [
   ['sec','Compare & decide'],['report','Trader report','📈'],['compare','Compare traders','⇅'],['scorecard','30-day scorecard','✓'],['groups','Account groups','▤'],
   ['sec','System'],['settings','Settings & API','⚙']
 ];
-let VIEW='overview', SEL={trader:'TR-001', ovAccount:'', range:'today', from:addDays(TODAY,-30), to:TODAY, ovRange:'week', ovFrom:addDays(TODAY,-7), ovTo:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, tradeSort:{col:null,dir:'asc'}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
+let VIEW='overview', SEL={trader:'TR-001', ovAccount:'__ALL__', ovFinDate:TODAY, ovKpiDate:TODAY, range:'today', from:addDays(TODAY,-30), to:TODAY, ovRange:'week', ovFrom:addDays(TODAY,-7), ovTo:TODAY, group:'G-1', gRange:'month', tradeFilter:{trader:'',flag:'',from:'',to:''}, tradeSort:{col:null,dir:'asc'}, flagFilter:{level:'',trader:'',range:'all'}, cmp:{sort:'ruleFollow',status:'',style:'',hold:''}};
 let charts=[];
 function shell(inner){
   const nf = chk().flags.filter(f=>f.trade.date===TODAY).length;
@@ -1150,26 +1150,211 @@ function _finStatusPill(status, isLoading){
   return '<span class="pill p-stop" style="font-size:11px">UNAVAILABLE</span>';
 }
 
-function renderOverviewFinancialCardsHtml(aid){
-  if(!aid){
-    return `
-      <div class="card kpi kpi-fade" style="display:flex;flex-direction:column;justify-content:space-between">
-        <div class="row" style="justify-content:space-between;align-items:flex-start">
-          <div class="l" style="font-size:10.5px;font-weight:700">📊 REALIZED P&amp;L</div>
-          ${_finStatusPill('UNAVAILABLE', false)}
-        </div>
-        <div class="v" style="margin-top:3px;font-size:17px;color:var(--muted)">Select account</div>
-        <div class="h" style="margin-top:5px;padding-top:4px;border-top:1px solid var(--line-subtle);font-size:9.5px">No broker account selected</div>
-      </div>
-      <div class="card kpi kpi-fade" style="display:flex;flex-direction:column;justify-content:space-between">
-        <div class="row" style="justify-content:space-between;align-items:flex-start">
-          <div class="l" style="font-size:10.5px;font-weight:700">⚡ UNREALIZED MTM</div>
-          ${_finStatusPill('UNAVAILABLE', false)}
-        </div>
-        <div class="v" style="margin-top:3px;font-size:17px;color:var(--muted)">Select account</div>
-        <div class="h" style="margin-top:5px;padding-top:4px;border-top:1px solid var(--line-subtle);font-size:9.5px">No broker account selected</div>
-      </div>`;
+function _ovAvailableMonths(){
+  const ms = new Set([TODAY.slice(0, 7)]);
+  (DAILY_REPORTS || []).forEach(r => { if(r && r.date && r.date.length >= 7) ms.add(r.date.slice(0, 7)); });
+  (S && Array.isArray(S.trades) ? S.trades : []).forEach(t => {
+    const d = t.exitDate || t.date;
+    if(d && d.length >= 7) ms.add(d.slice(0, 7));
+  });
+  return Array.from(ms).sort().reverse();
+}
+
+function _ovFmtMonthLabel(ym){
+  if(!ym || ym.length < 7) return ym || '';
+  const [y, m] = ym.split('-');
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return (names[Number(m) - 1] || m) + ' ' + y;
+}
+
+function _ovLatestDateInMonth(ym){
+  if(!ym) return TODAY;
+  if(ym === TODAY.slice(0, 7)) return TODAY;
+  const dates = [];
+  (DAILY_REPORTS || []).forEach(r => { if(r && r.date && r.date.startsWith(ym)) dates.push(r.date); });
+  (S && Array.isArray(S.trades) ? S.trades : []).forEach(t => {
+    const d = t.exitDate || t.date;
+    if(d && d.startsWith(ym)) dates.push(d);
+  });
+  if(dates.length){
+    dates.sort();
+    return dates[dates.length - 1];
   }
+  return ym + '-01';
+}
+
+function _ovAccountDedupeKey(acc){
+  if(!acc) return '';
+  return String(acc.zebu_uid || acc.id || '').trim().toUpperCase();
+}
+
+function _computeOverviewDayFinancials(aid, dateStr){
+  const d = dateStr || TODAY;
+  const isAll = (!aid || aid === '__ALL__');
+  const allAccs = S.accounts || [];
+
+  // Map account_id -> dedupe key (zebu_uid || id) so shared-UID accounts are never double-counted
+  const keyByAccId = {};
+  allAccs.forEach(a => { keyByAccId[a.id] = _ovAccountDedupeKey(a); });
+
+  if(d === TODAY && isAll){
+    const seenKeys = new Set();
+    let realized = 0, unrealized = 0, activeCnt = 0, tradeCnt = 0, latestUpd = null;
+    for(const a of allAccs){
+      const k = _ovAccountDedupeKey(a);
+      if(k && seenKeys.has(k)) continue;
+      if(k) seenKeys.add(k);
+      const cached = OV_FIN_CACHE[a.id];
+      const hasCachedLive = cached && (cached.status === 'LIVE' || cached.status === 'STALE') && cached.pnl && cached.pnl.value !== null && cached.pnl.value !== undefined;
+      if(hasCachedLive){
+        realized += Number(cached.pnl.value || 0);
+        unrealized += Number((cached.mtm && cached.mtm.value !== null && cached.mtm.value !== undefined) ? cached.mtm.value : 0);
+        activeCnt += 1;
+        if(cached.last_updated_ist && (!latestUpd || cached.last_updated_ist > latestUpd)) latestUpd = cached.last_updated_ist;
+      } else if(a.broker_position_pnl !== null && a.broker_position_pnl !== undefined){
+        realized += Number(a.broker_position_pnl || 0);
+        unrealized += Number(a.broker_total_mtm || 0);
+        activeCnt += 1;
+        if(a.broker_pos_updated_at && (!latestUpd || a.broker_pos_updated_at > latestUpd)) latestUpd = a.broker_pos_updated_at;
+      }
+    }
+    const todayTrades = (S.trades || []).filter(t => (t.exitDate || t.date) === TODAY || t.date === TODAY);
+    tradeCnt = todayTrades.length;
+    if(activeCnt === 0 && todayTrades.length > 0){
+      for(const t of todayTrades){
+        const p = tradePnl(t);
+        if(t.open) unrealized += p;
+        else realized += p;
+      }
+      activeCnt = new Set(todayTrades.map(t => keyByAccId[t.account] || t.account || t.trader)).size;
+    }
+    realized = Math.round(realized * 100) / 100;
+    unrealized = Math.round(unrealized * 100) / 100;
+    return {
+      realized,
+      unrealized,
+      total: Math.round((realized + unrealized) * 100) / 100,
+      status: activeCnt > 0 ? 'LIVE' : 'LIVE',
+      accountCount: activeCnt || allAccs.filter(a => a.link === 'Linked').length,
+      tradeCount: tradeCnt,
+      sourceLabel: `${activeCnt || allAccs.filter(a => a.link === 'Linked').length} accounts · Today`,
+    };
+  }
+
+  // Historical date (d !== TODAY) — authoritative DAILY_REPORTS first, non-overlapping S.trades fallback
+  const targetAcc = !isAll ? allAccs.find(a => a.id === aid) : null;
+  const targetKey = targetAcc ? _ovAccountDedupeKey(targetAcc) : null;
+  const coveredKeys = new Set();
+  let realized = 0, unrealized = 0, accCnt = 0, tradeCnt = 0, lockedCnt = 0;
+
+  const dayReps = (DAILY_REPORTS || []).filter(r => r && r.date === d);
+  for(const r of dayReps){
+    const rKey = keyByAccId[r.account] || String(r.account || '').trim().toUpperCase();
+    if(!isAll && r.account !== aid && (!targetKey || rKey !== targetKey)) continue;
+    if(coveredKeys.has(rKey)) continue;
+    coveredKeys.add(rKey);
+    realized += Number(r.realized_pnl || 0);
+    unrealized += Number(r.unrealized_pnl || 0);
+    tradeCnt += Number(r.total_trades || 0);
+    accCnt += 1;
+    if(r.status === 'FINALIZED' || r.status === 'ARCHIVED') lockedCnt += 1;
+  }
+
+  // Add non-overlapping trades from S.trades for accounts that do not have a DailyAccountReport on date d
+  const dayTrades = (S.trades || []).filter(t => {
+    const td = t.open ? t.date : (t.exitDate || t.date);
+    if(td !== d) return false;
+    const tKey = keyByAccId[t.account] || String(t.account || t.trader || '').trim().toUpperCase();
+    if(!isAll && t.account !== aid && (!targetKey || tKey !== targetKey)) return false;
+    return !coveredKeys.has(tKey);
+  });
+  if(dayTrades.length){
+    const extraAccKeys = new Set();
+    for(const t of dayTrades){
+      const p = tradePnl(t);
+      if(t.open) unrealized += p;
+      else realized += p;
+      tradeCnt += 1;
+      extraAccKeys.add(keyByAccId[t.account] || t.account || t.trader || '');
+    }
+    accCnt += extraAccKeys.size;
+  }
+
+  realized = Math.round(realized * 100) / 100;
+  unrealized = Math.round(unrealized * 100) / 100;
+  const st = lockedCnt > 0 ? 'FINALIZED' : (tradeCnt > 0 || accCnt > 0 ? 'HISTORICAL' : 'NO_DATA');
+  return {
+    realized,
+    unrealized,
+    total: Math.round((realized + unrealized) * 100) / 100,
+    status: st,
+    accountCount: accCnt,
+    tradeCount: tradeCnt,
+    sourceLabel: accCnt > 0
+      ? `${fmtDate(d)} · ${isAll ? (accCnt + ' accounts') : (targetAcc?.name || aid)} · ${tradeCnt} trades`
+      : `No trades recorded on ${fmtDate(d)}`,
+  };
+}
+
+function _renderDateFilterBar(prefix, selectedDate, onMonthFn, onDateFn){
+  const d = selectedDate || TODAY;
+  const ym = d.slice(0, 7);
+  const months = _ovAvailableMonths();
+  if(!months.includes(ym)) months.unshift(ym);
+  const isToday = d === TODAY;
+  return `
+    <div class="row" style="gap:6px;align-items:center">
+      <select id="${prefix}Month" onchange="${onMonthFn}(this.value)" title="Filter by month" style="height:28px;font-size:11.5px;font-weight:600;padding:2px 8px">
+        ${months.map(m => `<option value="${esc(m)}" ${m===ym?'selected':''}>${esc(_ovFmtMonthLabel(m))}</option>`).join('')}
+      </select>
+      <input id="${prefix}Date" type="date" value="${esc(d)}" max="${esc(TODAY)}" onchange="${onDateFn}(this.value)" title="Filter by date" style="height:28px;font-size:11.5px;font-weight:600;padding:2px 8px">
+      ${!isToday ? `<button class="btn sm" type="button" onclick="${onDateFn}('${esc(TODAY)}')" style="height:28px;padding:2px 8px;font-size:11px">Today</button>` : ''}
+    </div>`;
+}
+
+function renderOverviewFinancialCardsHtml(aid, dateStr){
+  const selDate = dateStr || SEL.ovFinDate || TODAY;
+  const isAll = (!aid || aid === '__ALL__');
+  const isHistorical = selDate !== TODAY;
+
+  // Combined "All accounts" (today or historical) OR any specific account on a historical date
+  if(isAll || isHistorical){
+    const agg = _computeOverviewDayFinancials(isAll ? '__ALL__' : aid, selDate);
+    const pillHtml = agg.status === 'LIVE'
+      ? '<span class="pill p-live" style="font-size:9.5px;padding:1px 5px">● LIVE</span>'
+      : agg.status === 'FINALIZED'
+        ? '<span class="pill p-pass" style="font-size:9.5px;padding:1px 5px">● LOCKED</span>'
+        : agg.status === 'HISTORICAL'
+          ? '<span class="pill p-low" style="font-size:9.5px;padding:1px 5px">HISTORICAL</span>'
+          : '<span class="pill p-low" style="font-size:9.5px;padding:1px 5px">NO TRADES</span>';
+
+    const makeAggCard = (title, numVal, icon) => {
+      const formatted = fmtInrExact(numVal.toFixed(2));
+      const isPos = numVal > 0;
+      const isNeg = numVal < 0;
+      const boxCls = isPos ? 'kpi-pos kpi-fade-pos' : (isNeg ? 'kpi-neg kpi-fade-neg' : 'kpi-fade');
+      const valCls = isPos ? 'pos' : (isNeg ? 'neg' : '');
+      return `<div class="card kpi ${boxCls}" style="display:flex;flex-direction:column;justify-content:space-between">
+        <div>
+          <div class="row" style="justify-content:space-between;align-items:flex-start">
+            <div class="l" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--mut);letter-spacing:0.03em">
+              <span>${icon}</span> ${title}
+            </div>
+            ${pillHtml}
+          </div>
+          <div class="v ${valCls}" style="margin-top:5px;font-size:23px;letter-spacing:-0.02em">${esc(formatted)}</div>
+        </div>
+        <div class="h" style="margin-top:5px;padding-top:2px;font-size:11.5px;color:var(--mut);display:flex;align-items:center;gap:4px">
+          <span>🕒</span> ${esc(agg.sourceLabel)}
+        </div>
+      </div>`;
+    };
+    return `
+      ${makeAggCard('REALIZED P&amp;L', agg.realized, '📊')}
+      ${makeAggCard('UNREALIZED MTM', agg.unrealized, '⚡')}
+    `;
+  }
+
   const snap = OV_FIN_CACHE[aid] || null;
   const loading = Boolean(OV_FIN_LOADING[aid]);
 
@@ -1229,7 +1414,7 @@ function renderOverviewFinancialCardsHtml(aid){
 function updateOverviewFinancialCards(){
   const host = document.getElementById('ovFinCards');
   if(!host || VIEW !== 'overview') return;
-  host.innerHTML = renderOverviewFinancialCardsHtml(SEL.ovAccount);
+  host.innerHTML = renderOverviewFinancialCardsHtml(SEL.ovAccount, SEL.ovFinDate);
 }
 
 async function loadOverviewFinancialSummary(accountId, force=false){
@@ -1279,11 +1464,47 @@ async function loadOverviewFinancialSummary(accountId, force=false){
 }
 
 function onOverviewAccountChange(aid){
-  SEL.ovAccount = aid;
+  SEL.ovAccount = aid || '__ALL__';
   updateOverviewFinancialCards();
-  if(LIVE && aid){
-    loadOverviewFinancialSummary(aid, false);
+  if(LIVE && SEL.ovAccount && SEL.ovAccount !== '__ALL__' && (SEL.ovFinDate || TODAY) === TODAY){
+    loadOverviewFinancialSummary(SEL.ovAccount, false);
   }
+}
+
+function onOverviewFinDateChange(d){
+  SEL.ovFinDate = d || TODAY;
+  if(LIVE && HAS_OLDER_TRADES && !FULL_HISTORY_LOADED && SEL.ovFinDate < addDays(TODAY, -30)){
+    loadFullHistoryTrades();
+  }
+  const mEl = document.getElementById('ovFinMonth');
+  if(mEl) mEl.value = SEL.ovFinDate.slice(0, 7);
+  const dEl = document.getElementById('ovFinDate');
+  if(dEl) dEl.value = SEL.ovFinDate;
+  render();
+  if(LIVE && SEL.ovAccount && SEL.ovAccount !== '__ALL__' && SEL.ovFinDate === TODAY && !OV_FIN_CACHE[SEL.ovAccount]){
+    loadOverviewFinancialSummary(SEL.ovAccount, false);
+  }
+}
+
+function onOverviewFinMonthChange(ym){
+  onOverviewFinDateChange(_ovLatestDateInMonth(ym));
+}
+
+function onOverviewKpiDateChange(d){
+  SEL.ovKpiDate = d || TODAY;
+  if(LIVE && HAS_OLDER_TRADES && !FULL_HISTORY_LOADED && SEL.ovKpiDate < addDays(TODAY, -30)){
+    loadFullHistoryTrades();
+  }
+  const kpiHost = document.getElementById('ovKpiBox');
+  if(kpiHost && VIEW === 'overview'){
+    kpiHost.innerHTML = renderOverviewKpiBoxHtml();
+  } else {
+    render();
+  }
+}
+
+function onOverviewKpiMonthChange(ym){
+  onOverviewKpiDateChange(_ovLatestDateInMonth(ym));
 }
 
 // ---------- Overview Funds Summary (Total Available Funds & Total Utilized Funds across all linked Zebu accounts) ----------
@@ -1384,34 +1605,66 @@ async function loadOverviewFundsSummary(force=false){
 }
 
 function renderOverviewKpiBoxHtml(){
+  const selDate = SEL.ovKpiDate || TODAY;
+  const isToday = selDate === TODAY;
   const {flags} = chk();
-  const today = flags.filter(f => f.trade.date === TODAY);
-  const tToday = S.trades.filter(t => (t.exitDate || t.date) === TODAY || t.date === TODAY);
-  const flaggedTr = new Set(today.map(f => f.trade.trader));
+  const dayFlags = flags.filter(f => f.trade.date === selDate);
+  const flaggedTr = new Set(dayFlags.map(f => f.trade.trader));
   const all = metrics(S.trades);
-  const accsWithBrokerToday = (S.accounts || []).filter(a => a.broker_position_pnl !== null && a.broker_position_pnl !== undefined);
-  const fallbackTodayPnl = accsWithBrokerToday.length
-    ? Math.round(accsWithBrokerToday.reduce((s, a) => s + Number(a.broker_position_pnl || 0), 0) * 100) / 100
-    : tToday.reduce((a, t) => a + tradePnl(t), 0);
-  const pnlToday = (OVERVIEW_PNL && OVERVIEW_PNL.pnl_today !== undefined && OVERVIEW_PNL.pnl_today !== null)
-    ? Number(OVERVIEW_PNL.pnl_today)
-    : fallbackTodayPnl;
+
   const pnlAllTime = (OVERVIEW_PNL && OVERVIEW_PNL.pnl_all_time !== undefined && OVERVIEW_PNL.pnl_all_time !== null)
     ? Number(OVERVIEW_PNL.pnl_all_time)
     : all.total;
-  const todayTradesCnt = (OVERVIEW_PNL && OVERVIEW_PNL.today_trades !== undefined) ? OVERVIEW_PNL.today_trades : tToday.length;
-  const activeAccsToday = (OVERVIEW_PNL && OVERVIEW_PNL.active_accounts_today !== undefined) ? OVERVIEW_PNL.active_accounts_today : accsWithBrokerToday.length;
   const totalDaysCnt = (OVERVIEW_PNL && OVERVIEW_PNL.trading_days !== undefined) ? OVERVIEW_PNL.trading_days : all.days;
   const totalAccsCnt = (OVERVIEW_PNL && OVERVIEW_PNL.total_accounts !== undefined) ? OVERVIEW_PNL.total_accounts : (S.accounts || []).length;
   const cnt = s => S.traders.filter(t => t.status === s).length;
-  return `
+
+  let pnlDay, activeAccsDay, dayTradesCnt, rfLabel, rfVal, rfSub, rfCls;
+  if(isToday){
+    const tToday = S.trades.filter(t => (t.exitDate || t.date) === TODAY || t.date === TODAY);
+    const accsWithBrokerToday = (S.accounts || []).filter(a => a.broker_position_pnl !== null && a.broker_position_pnl !== undefined);
+    const fallbackTodayPnl = accsWithBrokerToday.length
+      ? Math.round(accsWithBrokerToday.reduce((s, a) => s + Number(a.broker_position_pnl || 0), 0) * 100) / 100
+      : tToday.reduce((a, t) => a + tradePnl(t), 0);
+    pnlDay = (OVERVIEW_PNL && OVERVIEW_PNL.pnl_today !== undefined && OVERVIEW_PNL.pnl_today !== null)
+      ? Number(OVERVIEW_PNL.pnl_today)
+      : fallbackTodayPnl;
+    dayTradesCnt = (OVERVIEW_PNL && OVERVIEW_PNL.today_trades !== undefined) ? OVERVIEW_PNL.today_trades : tToday.length;
+    activeAccsDay = (OVERVIEW_PNL && OVERVIEW_PNL.active_accounts_today !== undefined) ? OVERVIEW_PNL.active_accounts_today : accsWithBrokerToday.length;
+    rfLabel = 'Rule-follow (all)';
+    rfVal = pct(all.ruleFollow);
+    rfSub = all.n + ' trades checked';
+    rfCls = all.ruleFollow >= 95 ? 'pos' : 'amb';
+  } else {
+    const dayAgg = _computeOverviewDayFinancials('__ALL__', selDate);
+    const dayTrades = S.trades.filter(t => (t.open ? t.date : (t.exitDate || t.date)) === selDate);
+    const dayM = metrics(dayTrades);
+    pnlDay = dayAgg.total;
+    activeAccsDay = dayAgg.accountCount;
+    dayTradesCnt = dayAgg.tradeCount;
+    rfLabel = `Rule-follow (${fmtDate(selDate)})`;
+    rfVal = dayM.n ? pct(dayM.ruleFollow) : '—';
+    rfSub = dayM.n ? (dayM.n + ' trades checked') : 'No trades on date';
+    rfCls = !dayM.n ? '' : (dayM.ruleFollow >= 95 ? 'pos' : 'amb');
+  }
+
+  const filterHeader = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px;font-weight:700;color:var(--text)">Daily Summary &amp; Compliance</span>
+        <span class="pill ${isToday?'p-live':'p-low'}" style="font-size:10px;padding:1px 6px">${isToday ? 'Today · ' + fmtDate(TODAY) : fmtDate(selDate)}</span>
+      </div>
+      ${_renderDateFilterBar('ovKpi', selDate, 'onOverviewKpiMonthChange', 'onOverviewKpiDateChange')}
+    </div>`;
+
+  return filterHeader + `
     <div class="grid k3" style="gap:16px;margin-bottom:16px">
-      ${kpi('Red flags today', today.length, today.filter(f=>f.level==='High').length+' high', today.length?'neg':'')}
-      ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, 'today')}
-      ${kpi('Rule-follow (all)', pct(all.ruleFollow), all.n+' trades checked', all.ruleFollow>=95?'pos':'amb')}
+      ${kpi(isToday ? 'Red flags today' : 'Red flags (' + fmtDate(selDate) + ')', dayFlags.length, dayFlags.filter(f=>f.level==='High').length+' high', dayFlags.length?'neg':'')}
+      ${kpi('Traders with a flag', flaggedTr.size+' of '+S.traders.length, isToday ? 'today' : fmtDate(selDate))}
+      ${kpi(rfLabel, rfVal, rfSub, rfCls)}
     </div>
     <div class="grid k3" style="gap:16px">
-      ${kpi('P&L today', fmtInrExact(pnlToday.toFixed(2)), `${activeAccsToday} accounts · ${todayTradesCnt} trades`, cls(pnlToday))}
+      ${kpi(isToday ? 'P&L today' : 'P&L (' + fmtDate(selDate) + ')', fmtInrExact(pnlDay.toFixed(2)), `${activeAccsDay} accounts · ${dayTradesCnt} trades`, cls(pnlDay))}
       ${kpi('P&L all time', fmtInrExact(pnlAllTime.toFixed(2)), `${totalDaysCnt} trading days · ${totalAccsCnt} accounts`, cls(pnlAllTime))}
       ${kpi('Traders', S.traders.length, `${cnt('Testing')} testing · ${cnt('Live')} live · ${cnt('Watch')} watch · ${cnt('Stopped')} stopped`)}
     </div>`;
@@ -1447,13 +1700,18 @@ function updateSidebarLiveBadges(){
 }
 
 V.overview = () => {
-  // Ensure an Overview account is selected if accounts exist
+  // Ensure an Overview account is selected (default to All accounts combined)
   const ovAccounts = S.accounts || [];
-  if(ovAccounts.length && (!SEL.ovAccount || !ovAccounts.some(a => a.id === SEL.ovAccount))){
-    const linkedFirst = ovAccounts.find(a => a.link === 'Linked') || ovAccounts[0];
-    SEL.ovAccount = linkedFirst.id;
+  if(!SEL.ovAccount || (SEL.ovAccount !== '__ALL__' && !ovAccounts.some(a => a.id === SEL.ovAccount))){
+    SEL.ovAccount = '__ALL__';
   }
+  if(!SEL.ovFinDate) SEL.ovFinDate = TODAY;
+  if(!SEL.ovKpiDate) SEL.ovKpiDate = TODAY;
   const {flags} = chk();
+
+  const ovFinRefreshClick = (SEL.ovAccount && SEL.ovAccount !== '__ALL__' && SEL.ovFinDate === TODAY)
+    ? `loadOverviewFinancialSummary(SEL.ovAccount, true);loadOverviewFundsSummary(true)`
+    : `API.syncAll().then(()=>{render();});loadOverviewFundsSummary(true)`;
 
   const ovFinSection = LIVE ? `
   <div class="card" style="margin-bottom:16px">
@@ -1462,16 +1720,18 @@ V.overview = () => {
         <span style="font-size:14px;font-weight:700;color:var(--text)">Account Financials</span>
         <span class="pill p-low" style="font-size:10px;padding:1px 6px">PositionBook &amp; Limits</span>
       </div>
-      <div class="row" style="gap:8px;align-items:center">
+      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
         <label style="font-size:11.5px;font-weight:600;color:var(--text-muted)">Broker Account:</label>
-        <select id="ovAccountSel" onchange="onOverviewAccountChange(this.value)" style="min-width:180px;font-weight:600;height:28px;font-size:11.5px;padding:2px 8px">
-          ${ovAccounts.length ? ovAccounts.map(a => `<option value="${esc(a.id)}" ${a.id===SEL.ovAccount?'selected':''}>${esc(a.name || a.id)} (${esc(a.zebu_uid || a.id)}) · ${esc(a.link || 'Not linked')}</option>`).join('') : '<option value="">No accounts configured</option>'}
+        <select id="ovAccountSel" onchange="onOverviewAccountChange(this.value)" style="min-width:190px;font-weight:600;height:28px;font-size:11.5px;padding:2px 8px">
+          <option value="__ALL__" ${SEL.ovAccount==='__ALL__'?'selected':''}>All accounts (combined)</option>
+          ${ovAccounts.map(a => `<option value="${esc(a.id)}" ${a.id===SEL.ovAccount?'selected':''}>${esc(a.name || a.id)} (${esc(a.zebu_uid || a.id)}) · ${esc(a.link || 'Not linked')}</option>`).join('')}
         </select>
-        ${SEL.ovAccount ? `<button class="btn sm" onclick="loadOverviewFinancialSummary(SEL.ovAccount, true);loadOverviewFundsSummary(true)" title="Force live sync from Zebu" style="height:28px;padding:2px 8px;font-size:11px">↻ Refresh</button>` : `<button class="btn sm" onclick="loadOverviewFundsSummary(true)" title="Force refresh Funds & Limits" style="height:28px;padding:2px 8px;font-size:11px">↻ Refresh</button>`}
+        ${_renderDateFilterBar('ovFin', SEL.ovFinDate, 'onOverviewFinMonthChange', 'onOverviewFinDateChange')}
+        <button class="btn sm" onclick="${ovFinRefreshClick}" title="Force live sync from Zebu" style="height:28px;padding:2px 8px;font-size:11px">↻ Refresh</button>
       </div>
     </div>
     <div class="ov-metrics-quad" style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px 28px">
-      <div id="ovFinCards" style="display:contents">${renderOverviewFinancialCardsHtml(SEL.ovAccount)}</div>
+      <div id="ovFinCards" style="display:contents">${renderOverviewFinancialCardsHtml(SEL.ovAccount, SEL.ovFinDate)}</div>
       <div id="ovFundsCards" style="display:contents">${renderOverviewFundsCardsHtml()}</div>
     </div>
   </div>` : '';
@@ -3659,7 +3919,7 @@ function bind(){
   on('ffLv','change',e=>{ SEL.flagFilter.level=e.target.value; render(); });
   on('gSel','change',e=>{ SEL.group=e.target.value; render(); });
   [['cSort','sort'],['cStatus','status'],['cStyle','style'],['cHold','hold']].forEach(([id,k])=>on(id,'change',e=>{ SEL.cmp[k]=e.target.value; render(); }));
-  if(VIEW === 'overview' && LIVE && USER && SEL.ovAccount && !OV_FIN_CACHE[SEL.ovAccount] && !OV_FIN_LOADING[SEL.ovAccount]){
+  if(VIEW === 'overview' && LIVE && USER && SEL.ovAccount && SEL.ovAccount !== '__ALL__' && (SEL.ovFinDate || TODAY) === TODAY && !OV_FIN_CACHE[SEL.ovAccount] && !OV_FIN_LOADING[SEL.ovAccount]){
     loadOverviewFinancialSummary(SEL.ovAccount, false);
   }
   const needFundsFetch = !OV_FUNDS_CACHE || OV_FUNDS_CACHE._fromStorage || OV_FUNDS_CACHE.status === 'UNAVAILABLE' || OV_FUNDS_CACHE.status === 'LOADING' || OV_FUNDS_CACHE.available_funds === null || OV_FUNDS_CACHE.available_funds === undefined;
@@ -3791,7 +4051,7 @@ function initDashboardWebSocket(){
                 error: null,
               } : msg.mtm,
             };
-            if(msg.account_id === SEL.ovAccount && VIEW === 'overview'){
+            if((msg.account_id === SEL.ovAccount || SEL.ovAccount === '__ALL__') && VIEW === 'overview' && (SEL.ovFinDate || TODAY) === TODAY){
               updateOverviewFinancialCards();
             }
           }
