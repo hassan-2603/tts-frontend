@@ -1204,14 +1204,9 @@ function _computeOverviewDayFinancials(aid, dateStr){
       const k = _ovAccountDedupeKey(a);
       if(k && seenKeys.has(k)) continue;
       if(k) seenKeys.add(k);
-      const cached = OV_FIN_CACHE[a.id];
-      const hasCachedLive = cached && (cached.status === 'LIVE' || cached.status === 'STALE') && cached.pnl && cached.pnl.value !== null && cached.pnl.value !== undefined;
-      if(hasCachedLive){
-        realized += Number(cached.pnl.value || 0);
-        unrealized += Number((cached.mtm && cached.mtm.value !== null && cached.mtm.value !== undefined) ? cached.mtm.value : 0);
-        activeCnt += 1;
-        if(cached.last_updated_ist && (!latestUpd || cached.last_updated_ist > latestUpd)) latestUpd = cached.last_updated_ist;
-      } else if(a.broker_position_pnl !== null && a.broker_position_pnl !== undefined){
+      // Always use authoritative server broker_position_pnl / broker_total_mtm from /api/bootstrap
+      // so All-accounts REALIZED P&L matches P&L today & P&L all time to the exact paisa (never mixing stale OV_FIN_CACHE).
+      if(a.broker_position_pnl !== null && a.broker_position_pnl !== undefined){
         realized += Number(a.broker_position_pnl || 0);
         unrealized += Number(a.broker_total_mtm || 0);
         activeCnt += 1;
@@ -1234,10 +1229,10 @@ function _computeOverviewDayFinancials(aid, dateStr){
       realized,
       unrealized,
       total: Math.round((realized + unrealized) * 100) / 100,
-      status: activeCnt > 0 ? 'LIVE' : 'LIVE',
-      accountCount: activeCnt || allAccs.filter(a => a.link === 'Linked').length,
+      status: 'LIVE',
+      accountCount: activeCnt,
       tradeCount: tradeCnt,
-      sourceLabel: `${activeCnt || allAccs.filter(a => a.link === 'Linked').length} accounts · Today`,
+      sourceLabel: `${activeCnt} accounts · Today`,
     };
   }
 
